@@ -1,9 +1,9 @@
 /**
- * The app's single page: hosts the trip form and, once a plan has been
- * generated, the route summary, map, and daily logs.
+ * Map-first trip planner shell.
  *
- * All state lives in useTripPlanner() - this component is only responsible
- * for composing the layout from already-scaffolded components.
+ * The dark basemap always fills the viewport. Planning controls float in a
+ * glass panel; once a plan exists the same panel docks left and holds summary
+ * plus daily logs so the map never sits beside empty chrome.
  */
 
 import { useTripPlanner } from "../hooks/useTripPlanner";
@@ -16,40 +16,72 @@ import "./TripPlannerPage.css";
 
 export function TripPlannerPage() {
   const { tripRequest, setTripRequest, tripPlan, loading, error, submitTrip } = useTripPlanner();
+  const hasPlan = Boolean(tripPlan);
 
   return (
-    <div className="trip-planner-page">
-      <header className="trip-planner-page__header">
-        <h1>HOS Trip Planner</h1>
+    <div className={`trip-planner${hasPlan ? " trip-planner--results" : ""}`}>
+      <div className="trip-planner__map-stage">
+        <RouteMap route={tripPlan?.route ?? null} loading={loading} />
+        <div className="trip-planner__map-veil" />
+      </div>
+
+      <header className="trip-planner__brand">
+        <div className="trip-planner__mark" aria-hidden="true" />
+        <div className="trip-planner__brand-copy">
+          <p className="trip-planner__wordmark">Spotter</p>
+          <p className="trip-planner__product">HOS trip planner</p>
+        </div>
       </header>
 
-      <div className="trip-planner-page__main">
-        <section className="trip-planner-page__form">
+      <aside
+        className={`trip-planner__panel${hasPlan ? " trip-planner__panel--docked" : " trip-planner__panel--hero"}`}
+      >
+        <div className="trip-planner__panel-inner">
+          {!hasPlan && (
+            <div className="trip-planner__intro">
+              <h1>Plan a compliant run</h1>
+              <p>Enter origin, pickup, and dropoff. We build the route, HOS schedule, and daily logs.</p>
+            </div>
+          )}
+
+          {hasPlan && (
+            <div className="trip-planner__panel-heading">
+              <h2>Trip inputs</h2>
+            </div>
+          )}
+
           <TripForm
             tripRequest={tripRequest}
             setTripRequest={setTripRequest}
             submitTrip={submitTrip}
             loading={loading}
           />
+
           {error && <ErrorBanner message={error} />}
-        </section>
 
-        <section className="trip-planner-page__map">
-          {tripPlan && <RouteMap route={tripPlan.route} />}
-        </section>
-      </div>
+          {tripPlan && (
+            <>
+              <div className="trip-planner__summary-slot">
+                <RouteSummaryCard
+                  summary={tripPlan.summary}
+                  timeZone={tripPlan.route.originTimezone}
+                />
+              </div>
 
-      {tripPlan && (
-        <section className="trip-planner-page__summary">
-          <RouteSummaryCard summary={tripPlan.summary} />
-        </section>
-      )}
-
-      {tripPlan && (
-        <section className="trip-planner-page__logs">
-          <DailyLogList dailyLogs={tripPlan.dailyLogs} />
-        </section>
-      )}
+              <section className="trip-planner__logs" aria-label="Daily log sheets">
+                <div className="trip-planner__logs-header">
+                  <h2>Daily logs</h2>
+                  <p>
+                    {tripPlan.route.originTimezone},{" "}
+                    {tripPlan.dailyLogs.length} day{tripPlan.dailyLogs.length === 1 ? "" : "s"}
+                  </p>
+                </div>
+                <DailyLogList dailyLogs={tripPlan.dailyLogs} />
+              </section>
+            </>
+          )}
+        </div>
+      </aside>
     </div>
   );
 }

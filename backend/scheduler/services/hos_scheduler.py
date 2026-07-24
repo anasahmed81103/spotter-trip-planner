@@ -8,19 +8,50 @@ resets, fuel stops, pickup/dropoff time) needed to legally complete the
 trip. It has no knowledge of Django, HTTP, or how its output will be
 displayed - it only produces ScheduleEvent objects.
 
-The FMCSA rules themselves are not implemented yet. This file only lays
-out the pipeline they will plug into, one private method per
-responsibility, so the engine can be built up one rule at a time without
-reshaping its structure later.
+The rules enforced here are:
+  - 11 hours of driving per duty day
+  - 14-hour on-duty window, measured as elapsed time and not extended by breaks
+  - 30-minute break after 8 cumulative hours of driving
+  - 10 consecutive hours off duty to reset the driving day
+  - 70 hours of on-duty time per 8-day cycle, cleared by a 34-hour restart
+  - a fuel stop every 1000 miles
 """
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
-from typing import List
+from datetime import datetime, timedelta, timezone
+from enum import Enum
+from typing import Callable, List, Optional
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from scheduler.domain import RouteInfo, ScheduleEvent, TripRequest
-from scheduler.services.constants import MAX_CYCLE_HOURS, PICKUP_DROPOFF_DURATION_HOURS
+from scheduler.services.constants import (
+    BREAK_DURATION_HOURS,
+    CYCLE_RESTART_HOURS,
+    FUEL_STOP_DURATION_HOURS,
+    FUEL_STOP_INTERVAL_MILES,
+    MAX_CYCLE_HOURS,
+    MAX_DRIVING_HOURS_PER_DAY,
+    MAX_ON_DUTY_WINDOW_HOURS,
+    MIN_OFF_DUTY_RESET_HOURS,
+    PICKUP_DROPOFF_DURATION_HOURS,
+    REQUIRED_BREAK_AFTER_DRIVING_HOURS,
+)
 from scheduler.services.enums import DutyStatus
+
+# Accumulated float hours drift by tiny amounts, so anything below this is
+# treated as zero rather than scheduling a zero-length event or looping.
+_TOLERANCE_HOURS = 1e-6
+
+_EN_ROUTE = "En route"
+
+
+class _StopReason(Enum):
+    """Why the truck may not legally drive any further right now."""
+
+    CYCLE_RESTART = "cycle_restart"
+    DAILY_RESET = "daily_reset"
+    BREAK = "break"
+    FUEL = "fuel"
 
 
 @dataclass
@@ -40,11 +71,22 @@ class _SchedulingState:
     remaining_distance_miles: float
     remaining_duration_hours: float
     cycle_hours_used: float
+    driving_hours_today: float
+    on_duty_window_hours_used: float
+    driving_hours_since_break: float
+    miles_since_fuel_stop: float
     events: List[ScheduleEvent]
 
 
 class HOSScheduler:
     """Builds the ordered list of duty-status events required to legally drive the trip."""
+
+    def __init__(self, now_provider: Optional[Callable[[ZoneInfo], datetime]] = None) -> None:
+        """
+        Accept an optional clock for deterministic tests; production uses
+        datetime.now in the timezone resolved from the current location.
+        """
+        self._now_provider = now_provider or datetime.now
 
     def generate_trip_plan(self, trip_request: TripRequest, route_info: RouteInfo) -> List[ScheduleEvent]:
         """
@@ -52,8 +94,8 @@ class HOSScheduler:
 
         This is the only method the rest of the application calls. Its job
         is purely to sequence the steps below in order - each step owns one
-        responsibility and is implemented (or, for now, stubbed) in its own
-        method so the pipeline reads as a single top-to-bottom story:
+        responsibility and is implemented in its own method so the pipeline
+        reads as a single top-to-bottom story:
 
             validate inputs
                 -> initialize scheduling state
@@ -95,6 +137,11 @@ class HOSScheduler:
         if not route_info.geometry:
             raise ValueError("Route geometry is empty; cannot schedule a trip with no route.")
 
+        try:
+            ZoneInfo(route_info.origin_timezone)
+        except ZoneInfoNotFoundError as error:
+            raise ValueError(f"Unknown origin timezone '{route_info.origin_timezone}'.") from error
+
         if trip_request.pickup_location.strip().lower() == trip_request.dropoff_location.strip().lower():
             raise ValueError("Pickup and dropoff locations cannot be the same.")
 
@@ -107,16 +154,24 @@ class HOSScheduler:
 
         This only prepares state - it does not add events, calculate
         breaks, or otherwise decide anything about the schedule. The
-        clock starts at the current moment, since nothing in TripRequest
-        specifies an explicit trip-start time.
+        clock starts at the current moment in the current location's IANA
+        timezone, since nothing in TripRequest specifies an explicit trip
+        start time. The driver is assumed to begin a fresh duty day with
+        an empty 14-hour window.
         """
+        origin_timezone = ZoneInfo(route_info.origin_timezone)
+
         return _SchedulingState(
             trip_request=trip_request,
             route_info=route_info,
-            current_time=datetime.now(),
+            current_time=self._now_provider(origin_timezone),
             remaining_distance_miles=route_info.distance_miles,
             remaining_duration_hours=route_info.duration_hours,
             cycle_hours_used=trip_request.current_cycle_used_hours,
+            driving_hours_today=0.0,
+            on_duty_window_hours_used=0.0,
+            driving_hours_since_break=0.0,
+            miles_since_fuel_stop=0.0,
             events=[],
         )
 
@@ -128,23 +183,16 @@ class HOSScheduler:
 
         Pickup always takes a fixed PICKUP_DROPOFF_DURATION_HOURS and is
         logged as On Duty (Not Driving) - it does not touch the remaining
-        distance/duration to drive, only the clock and cycle hours used.
+        distance/duration to drive, only the clock, the 14-hour window,
+        and cycle hours used.
         """
-        pickup_start = state.current_time
-        pickup_end = pickup_start + timedelta(hours=PICKUP_DROPOFF_DURATION_HOURS)
-
-        state.events.append(
-            ScheduleEvent(
-                status=DutyStatus.ON_DUTY,
-                start_time=pickup_start,
-                end_time=pickup_end,
-                location=state.trip_request.pickup_location,
-                remark="Pickup",
-            )
+        self._ensure_on_duty_capacity(state, PICKUP_DROPOFF_DURATION_HOURS)
+        self._record_on_duty(
+            state,
+            hours=PICKUP_DROPOFF_DURATION_HOURS,
+            location=state.trip_request.pickup_location,
+            remark="Pickup",
         )
-
-        state.current_time = pickup_end
-        state.cycle_hours_used += PICKUP_DROPOFF_DURATION_HOURS
 
     def _generate_driving_schedule(self, state: _SchedulingState) -> None:
         """
@@ -152,75 +200,185 @@ class HOSScheduler:
         sequence of driving / break / off-duty-reset / fuel-stop events
         until the driver reaches the dropoff location.
 
-        This currently just delegates to _drive_until_next_required_stop().
-        Once that method can determine why it stopped, this method will
-        loop it until the destination is reached - each call advancing the
-        trip by one driving segment plus whatever stop interrupted it.
+        Each pass either inserts the stop that is currently blocking the
+        driver, or drives forward until the next limit is reached. Both
+        branches always advance the clock, so the loop terminates once
+        the remaining trip duration is exhausted.
         """
-        self._drive_until_next_required_stop(state)
+        while state.remaining_duration_hours > _TOLERANCE_HOURS:
+            blocking_stop = self._next_required_stop(state)
+
+            if blocking_stop is None:
+                self._drive_until_next_required_stop(state)
+            else:
+                self._take_stop(state, blocking_stop)
+
+    def _next_required_stop(self, state: _SchedulingState) -> Optional[_StopReason]:
+        """
+        Return the stop the driver must take before driving again, or None
+        if driving may continue right now.
+
+        The checks are ordered by how much they cost the driver: an
+        exhausted cycle needs a 34-hour restart, an exhausted driving day
+        or on-duty window needs 10 hours off, a driving stretch of 8 hours
+        needs a 30-minute break, and 1000 miles needs fuel. The thresholds
+        mirror _calculate_next_driving_limit() exactly, so whenever that
+        method returns zero this one names the reason.
+        """
+        if MAX_CYCLE_HOURS - state.cycle_hours_used <= _TOLERANCE_HOURS:
+            return _StopReason.CYCLE_RESTART
+
+        driving_day_exhausted = MAX_DRIVING_HOURS_PER_DAY - state.driving_hours_today <= _TOLERANCE_HOURS
+        window_exhausted = MAX_ON_DUTY_WINDOW_HOURS - state.on_duty_window_hours_used <= _TOLERANCE_HOURS
+        if driving_day_exhausted or window_exhausted:
+            return _StopReason.DAILY_RESET
+
+        if REQUIRED_BREAK_AFTER_DRIVING_HOURS - state.driving_hours_since_break <= _TOLERANCE_HOURS:
+            return _StopReason.BREAK
+
+        if self._hours_until_fuel_stop(state) <= _TOLERANCE_HOURS:
+            return _StopReason.FUEL
+
+        return None
+
+    def _take_stop(self, state: _SchedulingState, reason: _StopReason) -> None:
+        """Insert the rest or service period named by `reason` and reset the clocks it clears."""
+        if reason is _StopReason.CYCLE_RESTART:
+            self._take_cycle_restart(state)
+        elif reason is _StopReason.DAILY_RESET:
+            self._take_daily_reset(state)
+        elif reason is _StopReason.BREAK:
+            self._take_thirty_minute_break(state)
+        else:
+            self._take_fuel_stop(state)
 
     def _drive_until_next_required_stop(self, state: _SchedulingState) -> None:
         """
         Drive the truck forward until something legally or physically
         requires it to stop, then record that driving as a ScheduleEvent
-        and update state accordingly.
+        and update every clock the driving consumed.
 
-        Eventually, this will be the single place that decides which of
-        the following stops the truck first, given the current state:
-          - destination reached (remaining distance/duration hits zero)
-          - mandatory 30-minute break (8 hours of driving without one)
-          - 11-hour driving limit reached
-          - 14-hour on-duty window reached
-          - a fuel stop is due (every FUEL_STOP_INTERVAL_MILES)
-          - a 10-hour off-duty reset is required
-          - the 70-hour/8-day cycle limit is reached
-
-        For now, destination-reached is the only stopping condition that
-        exists, so this simply drives for _calculate_next_driving_limit()'s
-        result in one continuous event. This is the baseline behavior that
-        each rule above will later interrupt - _generate_driving_schedule()
-        will then need to call this repeatedly instead of once.
+        The caller guarantees there is driving time available, so the
+        segment is always longer than zero.
         """
-        driving_start = state.current_time
-        driving_duration_hours = self._calculate_next_driving_limit(state)
-        driving_end = driving_start + timedelta(hours=driving_duration_hours)
+        driving_hours = self._calculate_next_driving_limit(state)
+        driving_miles = min(driving_hours * self._average_speed_mph(state), state.remaining_distance_miles)
 
-        state.events.append(
-            ScheduleEvent(
-                status=DutyStatus.DRIVING,
-                start_time=driving_start,
-                end_time=driving_end,
-                location=state.trip_request.dropoff_location,
-                remark="Driving",
-            )
+        self._record_event(
+            state,
+            status=DutyStatus.DRIVING,
+            hours=driving_hours,
+            location=state.trip_request.dropoff_location,
+            remark="Driving",
         )
 
-        state.current_time = driving_end
-        state.cycle_hours_used += driving_duration_hours
-        state.remaining_distance_miles = 0
-        state.remaining_duration_hours = 0
+        state.remaining_duration_hours = max(state.remaining_duration_hours - driving_hours, 0.0)
+        state.remaining_distance_miles = max(state.remaining_distance_miles - driving_miles, 0.0)
+        state.driving_hours_today += driving_hours
+        state.driving_hours_since_break += driving_hours
+        state.on_duty_window_hours_used += driving_hours
+        state.cycle_hours_used += driving_hours
+        state.miles_since_fuel_stop += driving_miles
 
     def _calculate_next_driving_limit(self, state: _SchedulingState) -> float:
         """
         Determine how many hours the truck may legally drive before it
-        must stop, given everything currently known about its state.
-
-        Eventually this will return the smallest of several limits:
-          - remaining trip duration (nothing left to drive)
-          - remaining 11-hour driving allowance for the day
-          - remaining time in the 14-hour on-duty window
-          - remaining time until a mandatory 30-minute break is due
-          - remaining distance until a fuel stop is due, converted to time
-          - remaining cycle hours before the 70-hour/8-day limit
-
-        For now, only the first of those exists, so the limit is simply
-        whatever trip duration remains - the truck always drives straight
-        to the destination. _drive_until_next_required_stop() uses this
-        return value instead of reading state.remaining_duration_hours
-        directly, so adding the rules above later only changes this one
-        method.
+        must stop, given everything currently known about its state: the
+        smallest of the remaining trip, the remaining 11-hour driving
+        allowance, the remaining 14-hour window, the time left before a
+        30-minute break is due, the remaining cycle hours, and the time
+        left before the next fuel stop.
         """
-        return state.remaining_duration_hours
+        return min(
+            state.remaining_duration_hours,
+            MAX_DRIVING_HOURS_PER_DAY - state.driving_hours_today,
+            MAX_ON_DUTY_WINDOW_HOURS - state.on_duty_window_hours_used,
+            REQUIRED_BREAK_AFTER_DRIVING_HOURS - state.driving_hours_since_break,
+            MAX_CYCLE_HOURS - state.cycle_hours_used,
+            self._hours_until_fuel_stop(state),
+        )
+
+    def _hours_until_fuel_stop(self, state: _SchedulingState) -> float:
+        """Convert the miles left before the next fuel stop into driving hours."""
+        miles_remaining = FUEL_STOP_INTERVAL_MILES - state.miles_since_fuel_stop
+        return max(miles_remaining, 0.0) / self._average_speed_mph(state)
+
+    def _average_speed_mph(self, state: _SchedulingState) -> float:
+        """
+        The route's average speed, used to convert between the mileage the
+        fuel rule counts and the hours every other rule counts. Both
+        inputs are guaranteed positive by _validate_inputs().
+        """
+        return state.route_info.distance_miles / state.route_info.duration_hours
+
+    def _take_thirty_minute_break(self, state: _SchedulingState) -> None:
+        """
+        Record the 30-minute break required after 8 cumulative hours of
+        driving. It is off-duty time, so it does not add to the cycle, but
+        it does burn elapsed time inside the 14-hour window.
+        """
+        self._record_event(
+            state,
+            status=DutyStatus.BREAK,
+            hours=BREAK_DURATION_HOURS,
+            location=_EN_ROUTE,
+            remark="30-minute break",
+        )
+
+        state.on_duty_window_hours_used += BREAK_DURATION_HOURS
+        state.driving_hours_since_break = 0.0
+
+    def _take_daily_reset(self, state: _SchedulingState) -> None:
+        """
+        Record the 10 consecutive hours off duty that reset the driving
+        day, logged in the sleeper berth as a long-haul driver would.
+        It clears the driving day, the on-duty window, and the break
+        clock, but not the 70-hour cycle.
+        """
+        self._record_event(
+            state,
+            status=DutyStatus.SLEEPER_BERTH,
+            hours=MIN_OFF_DUTY_RESET_HOURS,
+            location=_EN_ROUTE,
+            remark="10-hour reset",
+        )
+
+        state.driving_hours_today = 0.0
+        state.on_duty_window_hours_used = 0.0
+        state.driving_hours_since_break = 0.0
+
+    def _take_cycle_restart(self, state: _SchedulingState) -> None:
+        """
+        Record the 34-hour restart taken once the 70-hour cycle is spent.
+        This is the only stop that clears the cycle, and it necessarily
+        resets the daily clocks along with it.
+        """
+        self._record_event(
+            state,
+            status=DutyStatus.OFF_DUTY,
+            hours=CYCLE_RESTART_HOURS,
+            location=_EN_ROUTE,
+            remark="34-hour restart",
+        )
+
+        state.cycle_hours_used = 0.0
+        state.driving_hours_today = 0.0
+        state.on_duty_window_hours_used = 0.0
+        state.driving_hours_since_break = 0.0
+
+    def _take_fuel_stop(self, state: _SchedulingState) -> None:
+        """Record a fueling stop, which is on-duty (not driving) time, and reset the mileage counter."""
+        self._record_event(
+            state,
+            status=DutyStatus.FUEL,
+            hours=FUEL_STOP_DURATION_HOURS,
+            location=_EN_ROUTE,
+            remark="Fuel stop",
+        )
+
+        state.on_duty_window_hours_used += FUEL_STOP_DURATION_HOURS
+        state.cycle_hours_used += FUEL_STOP_DURATION_HOURS
+        state.miles_since_fuel_stop = 0.0
 
     def _add_dropoff(self, state: _SchedulingState) -> None:
         """
@@ -230,30 +388,75 @@ class HOSScheduler:
         Mirrors _add_pickup(): dropoff always takes a fixed
         PICKUP_DROPOFF_DURATION_HOURS and is logged as On Duty (Not
         Driving), starting immediately after the driving event ends. It
-        only advances the clock and cycle hours used - remaining
-        distance/duration are already zero by this point and are left
-        untouched.
+        only advances the clock, the window, and cycle hours used -
+        remaining distance/duration are already zero by this point.
         """
-        dropoff_start = state.current_time
-        dropoff_end = dropoff_start + timedelta(hours=PICKUP_DROPOFF_DURATION_HOURS)
+        self._ensure_on_duty_capacity(state, PICKUP_DROPOFF_DURATION_HOURS)
+        self._record_on_duty(
+            state,
+            hours=PICKUP_DROPOFF_DURATION_HOURS,
+            location=state.trip_request.dropoff_location,
+            remark="Dropoff",
+        )
+
+    def _ensure_on_duty_capacity(self, state: _SchedulingState, hours: float) -> None:
+        """
+        Insert the rest needed before `hours` of on-duty work would breach
+        the cycle or the 14-hour window. Loading and unloading are subject
+        to the same limits as driving, so pickup and dropoff cannot simply
+        be appended to a spent duty day.
+        """
+        if state.cycle_hours_used + hours > MAX_CYCLE_HOURS + _TOLERANCE_HOURS:
+            self._take_cycle_restart(state)
+        elif state.on_duty_window_hours_used + hours > MAX_ON_DUTY_WINDOW_HOURS + _TOLERANCE_HOURS:
+            self._take_daily_reset(state)
+
+    def _record_on_duty(self, state: _SchedulingState, hours: float, location: str, remark: str) -> None:
+        """Record an On Duty (Not Driving) period and charge it to the window and the cycle."""
+        self._record_event(state, status=DutyStatus.ON_DUTY, hours=hours, location=location, remark=remark)
+
+        state.on_duty_window_hours_used += hours
+        state.cycle_hours_used += hours
+
+    def _record_event(
+        self,
+        state: _SchedulingState,
+        status: DutyStatus,
+        hours: float,
+        location: str,
+        remark: str,
+    ) -> None:
+        """
+        Append one duty period to the schedule and advance the clock past
+        it. Every event in the schedule is created here, which is what
+        keeps the periods contiguous: each one starts exactly where the
+        previous one ended.
+        """
+        start_time = state.current_time
+        # Advance on the UTC timeline, then convert back to origin local
+        # time. Direct arithmetic on a ZoneInfo datetime uses wall-clock
+        # arithmetic and can lose or gain an hour across DST transitions.
+        end_time = (
+            start_time.astimezone(timezone.utc)
+            + timedelta(hours=hours)
+        ).astimezone(start_time.tzinfo)
 
         state.events.append(
             ScheduleEvent(
-                status=DutyStatus.ON_DUTY,
-                start_time=dropoff_start,
-                end_time=dropoff_end,
-                location=state.trip_request.dropoff_location,
-                remark="Dropoff",
+                status=status,
+                start_time=start_time,
+                end_time=end_time,
+                location=location,
+                remark=remark,
             )
         )
 
-        state.current_time = dropoff_end
-        state.cycle_hours_used += PICKUP_DROPOFF_DURATION_HOURS
+        state.current_time = end_time
 
     def _finalize_schedule(self, state: _SchedulingState) -> List[ScheduleEvent]:
         """
         Return the events accumulated during scheduling, in the
-        chronological order they were added (pickup, driving, dropoff).
+        chronological order they were added.
 
         Deliberately small: splitting events into per-day DailyLogs and
         computing trip-level summaries is LogGenerator's job, not

@@ -1,88 +1,146 @@
 /**
- * Renders the planned route on a map using react-leaflet and OpenStreetMap
- * tiles: markers for the current location, pickup, and dropoff, and a
- * polyline tracing RouteInfo.geometry, with the viewport automatically
- * fitted to the route's bounds.
+ * Renders the planned route on a dark basemap using react-leaflet.
  *
- * All Leaflet-specific setup (default icon assets, bounds fitting) lives
- * inside this file so the rest of the app never needs to know react-leaflet
- * or leaflet exist.
+ * Always mounts a map (continental US when no route yet) so the trip planner
+ * shell never shows an empty void beside the form. Dark Carto tiles, custom
+ * waypoint markers, and a teal route polyline match the dispatch theme.
  */
 
 import { useEffect, useMemo } from "react";
 import type { LatLngBoundsExpression, LatLngTuple } from "leaflet";
 import L from "leaflet";
 import { MapContainer, Marker, Polyline, Popup, TileLayer, useMap } from "react-leaflet";
-import markerIconRetinaUrl from "leaflet/dist/images/marker-icon-2x.png";
-import markerIconUrl from "leaflet/dist/images/marker-icon.png";
-import markerShadowUrl from "leaflet/dist/images/marker-shadow.png";
 import "leaflet/dist/leaflet.css";
 import type { RouteInfo } from "../types/trip";
 import "./RouteMap.css";
 
-// Bundlers rewrite Leaflet's marker image URLs, breaking its built-in
-// lookup unless the resolved asset URLs are supplied explicitly.
-delete (L.Icon.Default.prototype as unknown as { _getIconUrl?: unknown })._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconUrl: markerIconUrl,
-  iconRetinaUrl: markerIconRetinaUrl,
-  shadowUrl: markerShadowUrl,
-});
-
 interface RouteMapProps {
-  route: RouteInfo;
+  route: RouteInfo | null;
+  loading?: boolean;
 }
 
 interface FitToBoundsProps {
   bounds: LatLngBoundsExpression;
 }
 
+const DEFAULT_CENTER: LatLngTuple = [39.5, -98.35];
+const DEFAULT_ZOOM = 5;
+
+function createWaypointIcon(kind: "current" | "pickup" | "dropoff") {
+  return L.divIcon({
+    className: `route-map__marker route-map__marker--${kind}`,
+    html: `<span class="route-map__marker-dot"></span>`,
+    iconSize: [18, 18],
+    iconAnchor: [9, 9],
+    popupAnchor: [0, -10],
+  });
+}
+
+const currentIcon = createWaypointIcon("current");
+const pickupIcon = createWaypointIcon("pickup");
+const dropoffIcon = createWaypointIcon("dropoff");
+
 /** Re-fits the map's viewport whenever the route's bounds change. */
 function FitToBounds({ bounds }: FitToBoundsProps) {
   const map = useMap();
 
   useEffect(() => {
-    map.fitBounds(bounds, { padding: [32, 32] });
+    map.fitBounds(bounds, { padding: [48, 48], maxZoom: 12, animate: true });
   }, [map, bounds]);
 
   return null;
 }
 
-export function RouteMap({ route }: RouteMapProps) {
-  const positions = route.geometry as LatLngTuple[];
+/** Leaflet needs an explicit resize after the stage layout changes. */
+function InvalidateOnResize() {
+  const map = useMap();
 
-  const bounds = useMemo<LatLngBoundsExpression>(() => positions, [positions]);
+  useEffect(() => {
+    const container = map.getContainer();
+    const observer = new ResizeObserver(() => {
+      map.invalidateSize({ animate: false });
+    });
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [map]);
 
-  if (positions.length === 0) {
-    return null;
-  }
+  return null;
+}
 
-  const currentPosition = positions[0];
-  const dropoffPosition = positions[positions.length - 1];
-  // The route's geometry is only the continuous driving polyline - it
-  // doesn't record which point corresponds to the pickup waypoint. The
-  // midpoint is the closest approximation available without changing
-  // what RouteInfo carries.
-  const pickupPosition = positions[Math.floor((positions.length - 1) / 2)];
+export function RouteMap({ route, loading = false }: RouteMapProps) {
+  const positions = (route?.geometry ?? []) as LatLngTuple[];
+  const hasRoute = positions.length > 0;
+
+  const bounds = useMemo<LatLngBoundsExpression | null>(() => {
+    if (!hasRoute) {
+      return null;
+    }
+    return positions;
+  }, [hasRoute, positions]);
+
+  const currentPosition = hasRoute ? positions[0] : null;
+  const dropoffPosition = hasRoute ? positions[positions.length - 1] : null;
+  // Geometry is the continuous driving polyline only - midpoint approximates pickup.
+  const pickupPosition = hasRoute ? positions[Math.floor((positions.length - 1) / 2)] : null;
 
   return (
-    <div className="route-map" aria-label="Route map">
-      <MapContainer bounds={bounds} className="route-map__container" scrollWheelZoom>
+    <div className={`route-map${loading ? " route-map--loading" : ""}`} aria-label="Route map">
+      <MapContainer
+        center={DEFAULT_CENTER}
+        zoom={DEFAULT_ZOOM}
+        className="route-map__container"
+        scrollWheelZoom
+        zoomControl
+      >
         <TileLayer
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+          url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/">CARTO</a>'
+          subdomains="abcd"
+          maxZoom={19}
         />
-        <FitToBounds bounds={bounds} />
-        <Polyline positions={positions} />
-        <Marker position={currentPosition}>
-          <Popup>Current Location</Popup>
-        </Marker>
-        <Marker position={pickupPosition}>
-          <Popup>Pickup</Popup>
-        </Marker>
-        <Marker position={dropoffPosition}>
-          <Popup>Dropoff</Popup>
-        </Marker>
+
+        <InvalidateOnResize />
+        {bounds && <FitToBounds bounds={bounds} />}
+
+        {hasRoute && (
+          <>
+            <Polyline
+              positions={positions}
+              pathOptions={{
+                color: "#2f9e8f",
+                weight: 4,
+                opacity: 0.92,
+                lineCap: "round",
+                lineJoin: "round",
+              }}
+            />
+            <Polyline
+              positions={positions}
+              pathOptions={{
+                color: "#5fd4c4",
+                weight: 1.5,
+                opacity: 0.45,
+                lineCap: "round",
+                lineJoin: "round",
+              }}
+            />
+            {currentPosition && (
+              <Marker position={currentPosition} icon={currentIcon}>
+                <Popup>Current location</Popup>
+              </Marker>
+            )}
+            {pickupPosition && (
+              <Marker position={pickupPosition} icon={pickupIcon}>
+                <Popup>Pickup</Popup>
+              </Marker>
+            )}
+            {dropoffPosition && (
+              <Marker position={dropoffPosition} icon={dropoffIcon}>
+                <Popup>Dropoff</Popup>
+              </Marker>
+            )}
+          </>
+        )}
       </MapContainer>
     </div>
   );

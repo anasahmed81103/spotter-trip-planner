@@ -13,5 +13,9 @@ BREAK_DURATION_HOURS = 0.5
 MIN_OFF_DUTY_RESET_HOURS = 10
 MAX_CYCLE_HOURS = 70
 CYCLE_WINDOW_DAYS = 8
+# A driver who exhausts the 70-hour cycle cannot recover it with a normal
+# 10-hour reset; only a 34-hour restart clears the cycle clock.
+CYCLE_RESTART_HOURS = 34
 FUEL_STOP_INTERVAL_MILES = 1000
+FUEL_STOP_DURATION_HOURS = 0.5
 PICKUP_DROPOFF_DURATION_HOURS = 1

@@ -1,21 +1,102 @@
-/* Styles for DailyLogSheet. */
+/* FMCSA-style log sheet on dark surfaces. */
 
 .daily-log-sheet {
+  position: relative;
   padding: var(--space-lg);
   background-color: var(--color-surface);
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-card);
-  transition: box-shadow var(--transition-fast);
+  transition:
+    border-color var(--transition-fast),
+    box-shadow var(--transition-fast),
+    transform var(--transition-fast);
 }
 
 .daily-log-sheet:hover {
-  box-shadow: var(--shadow-card-hover);
+  border-color: rgba(47, 158, 143, 0.28);
+  box-shadow: var(--shadow-glow);
+  transform: translateY(-1px);
+}
+
+.daily-log-sheet:focus-within {
+  border-color: var(--color-accent);
+}
+
+.daily-log-sheet__open-hit-area {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  appearance: none;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: inherit;
+  cursor: zoom-in;
+}
+
+.daily-log-sheet__open-hit-area:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 3px;
+}
+
+.daily-log-sheet__header {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+  margin-bottom: var(--space-md);
+  pointer-events: none;
 }
 
 .daily-log-sheet__date {
-  margin: 0 0 var(--space-md);
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.92rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
   color: var(--color-ink);
+}
+
+.daily-log-sheet__actions,
+.daily-log-modal__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  pointer-events: auto;
+}
+
+.daily-log-sheet__actions button,
+.daily-log-modal__actions button {
+  min-height: 34px;
+  padding: 7px 11px;
+  color: var(--color-ink-muted);
+  background: rgba(232, 237, 244, 0.04);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  font-size: 0.74rem;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    color var(--transition-fast),
+    border-color var(--transition-fast),
+    background-color var(--transition-fast),
+    transform var(--transition-fast);
+}
+
+.daily-log-sheet__actions button:hover,
+.daily-log-modal__actions button:hover {
+  color: var(--color-ink);
+  border-color: rgba(47, 158, 143, 0.5);
+  background: var(--color-accent-soft);
+}
+
+.daily-log-sheet__actions button:active,
+.daily-log-modal__actions button:active {
+  transform: scale(0.97);
 }
 
 .daily-log-sheet__grid {
@@ -23,6 +104,14 @@
   width: 100%;
   height: auto;
   font-family: var(--font-mono);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.daily-log-sheet__grid,
+.daily-log-sheet__totals {
+  position: relative;
+  pointer-events: none;
 }
 
 .daily-log-sheet__gridline {
@@ -31,43 +120,46 @@
 }
 
 .daily-log-sheet__gridline--major {
-  stroke: var(--color-ink-muted);
+  stroke: var(--color-border-strong);
 }
 
 .daily-log-sheet__hour-label {
-  fill: var(--color-ink-muted);
+  fill: var(--color-ink-faint);
   font-size: 10px;
 }
 
 .daily-log-sheet__row-label {
-  fill: var(--color-ink);
-  font-size: 12px;
+  fill: var(--color-ink-muted);
+  font-size: 11px;
   font-family: var(--font-ui);
+  font-weight: 500;
 }
 
 .daily-log-sheet__row-background {
-  fill: var(--color-surface);
+  fill: rgba(232, 237, 244, 0.02);
 }
 
 .daily-log-sheet__row-background--alt {
-  fill: var(--color-background);
+  fill: rgba(232, 237, 244, 0.045);
 }
 
 .daily-log-sheet__grid-border {
-  stroke: var(--color-ink-muted);
+  stroke: var(--color-border-strong);
   stroke-width: 1.5;
 }
 
 .daily-log-sheet__step-line {
-  stroke: var(--color-ink);
-  stroke-width: 2;
+  stroke: rgba(232, 237, 244, 0.55);
+  stroke-width: 1.75;
 }
 
 .daily-log-sheet__totals {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: var(--space-md);
   margin: var(--space-md) 0 0;
+  padding-top: var(--space-md);
+  border-top: 1px solid var(--color-border);
 }
 
 .daily-log-sheet__totals div {
@@ -77,18 +169,110 @@
 }
 
 .daily-log-sheet__totals dt {
-  font-size: 0.75rem;
+  font-size: 0.65rem;
   font-weight: 600;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--color-ink-muted);
+  color: var(--color-ink-faint);
 }
 
 .daily-log-sheet__totals dd {
   margin: 0;
-  font-size: 1rem;
+  font-family: var(--font-mono);
+  font-size: 0.95rem;
   font-weight: 600;
+  font-variant-numeric: tabular-nums;
   color: var(--color-ink);
+}
+
+/* Full-screen sheet viewer, portalled to body to escape the dock overflow. */
+.daily-log-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: var(--space-lg);
+  background: rgba(5, 8, 12, 0.82);
+  backdrop-filter: blur(14px) saturate(80%);
+  -webkit-backdrop-filter: blur(14px) saturate(80%);
+  animation: daily-log-modal-backdrop 180ms var(--ease-out) both;
+}
+
+.daily-log-modal__dialog {
+  width: min(1180px, 96vw);
+  max-height: 92dvh;
+  overflow: auto;
+  padding: clamp(18px, 3vw, 36px);
+  background:
+    radial-gradient(circle at 100% 0%, rgba(47, 158, 143, 0.09), transparent 36%),
+    var(--color-surface);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.65);
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border-strong) transparent;
+  animation: daily-log-modal-enter 260ms var(--ease-out) both;
+}
+
+.daily-log-modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-lg);
+  margin-bottom: clamp(22px, 3vw, 34px);
+}
+
+.daily-log-modal__label {
+  margin: 0 0 4px;
+  color: var(--color-ink-muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.daily-log-modal__header h2 {
+  font-family: var(--font-mono);
+  font-size: clamp(1.2rem, 3vw, 1.65rem);
+  letter-spacing: -0.03em;
+}
+
+.daily-log-modal__actions .daily-log-modal__close {
+  color: #061014;
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+}
+
+.daily-log-modal__chart {
+  min-width: 720px;
+  padding: clamp(12px, 2vw, 22px);
+  background: rgba(232, 237, 244, 0.025);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.daily-log-sheet__grid--expanded {
+  width: 100%;
+  min-height: 260px;
+}
+
+.daily-log-modal__dialog > .daily-log-sheet__totals {
+  pointer-events: auto;
+  margin-top: var(--space-lg);
+}
+
+@keyframes daily-log-modal-backdrop {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes daily-log-modal-enter {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.985);
+  }
 }
 
 @media (max-width: 600px) {
@@ -96,8 +280,52 @@
     padding: var(--space-md);
   }
 
+  .daily-log-sheet__header {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: var(--space-sm);
+  }
+
+  .daily-log-sheet__actions {
+    width: 100%;
+  }
+
+  .daily-log-sheet__actions button {
+    flex: 1;
+  }
+
   .daily-log-sheet__hour-label {
     font-size: 8px;
   }
-}
 
+  .daily-log-sheet__totals {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .daily-log-modal {
+    padding: var(--space-sm);
+  }
+
+  .daily-log-modal__dialog {
+    width: 100%;
+    max-height: calc(100dvh - var(--space-md));
+    border-radius: var(--radius-md);
+  }
+
+  .daily-log-modal__header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .daily-log-modal__actions {
+    width: 100%;
+  }
+
+  .daily-log-modal__actions button {
+    flex: 1;
+  }
+
+  .daily-log-modal__chart {
+    overflow-x: auto;
+  }
+}

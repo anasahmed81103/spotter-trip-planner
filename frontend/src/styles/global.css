@@ -1,8 +1,5 @@
 /*
- * Global resets and base typography.
- *
- * Kept intentionally small - component-level styling lives in each
- * component's own CSS file. This file only sets the page-wide baseline.
+ * Global resets, typography baseline, and atmospheric layers.
  */
 
 * {
@@ -11,16 +8,37 @@
 
 html {
   -webkit-text-size-adjust: 100%;
+  height: 100%;
 }
 
 body {
   margin: 0;
+  min-height: 100dvh;
   background-color: var(--color-background);
   color: var(--color-ink);
   font-family: var(--font-ui);
+  font-size: 15px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+  overflow-x: hidden;
+}
+
+#root {
+  min-height: 100dvh;
+}
+
+/* Fixed grain overlay — breaks flat digital surfaces without costing scroll paint */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-grain);
+  pointer-events: none;
+  opacity: 0.035;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+  background-size: 180px 180px;
 }
 
 h1,
@@ -29,7 +47,9 @@ h3,
 h4 {
   margin: 0;
   font-weight: 600;
-  line-height: 1.25;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
 }
 
 p {
@@ -37,7 +57,7 @@ p {
 }
 
 a {
-  color: var(--color-accent);
+  color: var(--color-accent-hover);
 }
 
 button,
@@ -48,4 +68,19 @@ input {
 :focus-visible {
   outline: 2px solid var(--color-accent);
   outline-offset: 2px;
+}
+
+::selection {
+  background: var(--color-accent-soft);
+  color: var(--color-ink);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

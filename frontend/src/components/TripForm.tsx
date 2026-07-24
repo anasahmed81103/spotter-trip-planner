@@ -1,8 +1,7 @@
 /**
  * Collects the four inputs needed to plan a trip as controlled inputs
  * bound to `tripRequest`, and calls `submitTrip()` once the request
- * passes validation. Does not call the API directly - that's submitTrip's
- * job, supplied by the caller (via useTripPlanner).
+ * passes validation.
  */
 
 import { useState } from "react";
@@ -85,72 +84,90 @@ export function TripForm({ tripRequest, setTripRequest, submitTrip, loading }: T
 
   return (
     <form className="trip-form" onSubmit={handleSubmit} noValidate>
-      <div className="trip-form__field">
-        <label htmlFor="currentLocation">Current Location</label>
-        <input
-          id="currentLocation"
-          name="currentLocation"
-          type="text"
-          value={tripRequest.currentLocation}
-          onChange={handleTextChange("currentLocation")}
-          placeholder="e.g. Dallas, TX"
-          disabled={loading}
-        />
-        {errors.currentLocation && (
-          <p className="trip-form__field-error" role="alert">
-            {errors.currentLocation}
-          </p>
-        )}
-      </div>
+      <ol className="trip-form__route" aria-label="Route stops">
+        <li className="trip-form__field trip-form__field--stop">
+          <span className="trip-form__stop-index" aria-hidden="true" />
+          <div className="trip-form__field-body">
+            <label htmlFor="currentLocation">Current location</label>
+            <input
+              id="currentLocation"
+              name="currentLocation"
+              type="text"
+              value={tripRequest.currentLocation}
+              onChange={handleTextChange("currentLocation")}
+              placeholder="Dallas, TX"
+              autoComplete="off"
+              disabled={loading}
+            />
+            {errors.currentLocation && (
+              <p className="trip-form__field-error" role="alert">
+                {errors.currentLocation}
+              </p>
+            )}
+          </div>
+        </li>
 
-      <div className="trip-form__field">
-        <label htmlFor="pickupLocation">Pickup Location</label>
-        <input
-          id="pickupLocation"
-          name="pickupLocation"
-          type="text"
-          value={tripRequest.pickupLocation}
-          onChange={handleTextChange("pickupLocation")}
-          placeholder="e.g. Fort Worth, TX"
-          disabled={loading}
-        />
-        {errors.pickupLocation && (
-          <p className="trip-form__field-error" role="alert">
-            {errors.pickupLocation}
-          </p>
-        )}
-      </div>
+        <li className="trip-form__field trip-form__field--stop">
+          <span className="trip-form__stop-index" aria-hidden="true" />
+          <div className="trip-form__field-body">
+            <label htmlFor="pickupLocation">Pickup</label>
+            <input
+              id="pickupLocation"
+              name="pickupLocation"
+              type="text"
+              value={tripRequest.pickupLocation}
+              onChange={handleTextChange("pickupLocation")}
+              placeholder="Fort Worth, TX"
+              autoComplete="off"
+              disabled={loading}
+            />
+            {errors.pickupLocation && (
+              <p className="trip-form__field-error" role="alert">
+                {errors.pickupLocation}
+              </p>
+            )}
+          </div>
+        </li>
 
-      <div className="trip-form__field">
-        <label htmlFor="dropoffLocation">Dropoff Location</label>
-        <input
-          id="dropoffLocation"
-          name="dropoffLocation"
-          type="text"
-          value={tripRequest.dropoffLocation}
-          onChange={handleTextChange("dropoffLocation")}
-          placeholder="e.g. Denver, CO"
-          disabled={loading}
-        />
-        {errors.dropoffLocation && (
-          <p className="trip-form__field-error" role="alert">
-            {errors.dropoffLocation}
-          </p>
-        )}
-      </div>
+        <li className="trip-form__field trip-form__field--stop">
+          <span className="trip-form__stop-index trip-form__stop-index--end" aria-hidden="true" />
+          <div className="trip-form__field-body">
+            <label htmlFor="dropoffLocation">Dropoff</label>
+            <input
+              id="dropoffLocation"
+              name="dropoffLocation"
+              type="text"
+              value={tripRequest.dropoffLocation}
+              onChange={handleTextChange("dropoffLocation")}
+              placeholder="Denver, CO"
+              autoComplete="off"
+              disabled={loading}
+            />
+            {errors.dropoffLocation && (
+              <p className="trip-form__field-error" role="alert">
+                {errors.dropoffLocation}
+              </p>
+            )}
+          </div>
+        </li>
+      </ol>
 
-      <div className="trip-form__field">
-        <label htmlFor="currentCycleUsedHours">Current Cycle Hours Used</label>
-        <input
-          id="currentCycleUsedHours"
-          name="currentCycleUsedHours"
-          type="number"
-          step="0.1"
-          value={tripRequest.currentCycleUsedHours}
-          onChange={handleCycleHoursChange}
-          placeholder="e.g. 12"
-          disabled={loading}
-        />
+      <div className="trip-form__field trip-form__field--cycle">
+        <label htmlFor="currentCycleUsedHours">Cycle hours used</label>
+        <div className="trip-form__cycle-row">
+          <input
+            id="currentCycleUsedHours"
+            name="currentCycleUsedHours"
+            type="number"
+            step="0.1"
+            min="0"
+            value={tripRequest.currentCycleUsedHours}
+            onChange={handleCycleHoursChange}
+            placeholder="12"
+            disabled={loading}
+          />
+          <span className="trip-form__cycle-unit">hrs</span>
+        </div>
         {errors.currentCycleUsedHours && (
           <p className="trip-form__field-error" role="alert">
             {errors.currentCycleUsedHours}
@@ -159,7 +176,7 @@ export function TripForm({ tripRequest, setTripRequest, submitTrip, loading }: T
       </div>
 
       <div className="trip-form__actions">
-        <Button label="Plan Trip" type="submit" disabled={loading} />
+        <Button label={loading ? "Planning route" : "Plan trip"} type="submit" disabled={loading} />
         {loading && <LoadingSpinner />}
       </div>
     </form>

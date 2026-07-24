@@ -26,11 +26,12 @@ class TripRequest:
 
 @dataclass
 class RouteInfo:
-    """Distance, duration, and map geometry for the full trip route."""
+    """Distance, duration, map geometry, and origin timezone for the route."""
 
     distance_miles: float
     duration_hours: float
     geometry: List[Tuple[float, float]]
+    origin_timezone: str
 
 
 @dataclass

@@ -26,6 +26,7 @@ export interface RouteInfo {
   distanceMiles: number;
   durationHours: number;
   geometry: [number, number][];
+  originTimezone: string;
 }
 
 export interface ScheduleEvent {

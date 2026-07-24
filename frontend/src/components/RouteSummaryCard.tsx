@@ -1,8 +1,5 @@
 /**
- * Read-only card summarizing the trip: total distance, driving duration,
- * estimated arrival, and number of days. Purely presentational - all
- * values come from `summary` as-is, formatted for display via shared
- * helpers, with no calculation or derivation happening here.
+ * Compact metric strip summarizing the planned trip.
  */
 
 import type { TripSummary } from "../types/trip";
@@ -13,34 +10,35 @@ import "./RouteSummaryCard.css";
 
 interface RouteSummaryCardProps {
   summary: TripSummary;
+  timeZone: string;
 }
 
-export function RouteSummaryCard({ summary }: RouteSummaryCardProps) {
+export function RouteSummaryCard({ summary, timeZone }: RouteSummaryCardProps) {
   return (
     <section className="route-summary-card" aria-label="Trip summary">
       <div className="route-summary-card__item">
-        <span className="route-summary-card__label">Total Distance</span>
+        <span className="route-summary-card__label">Distance</span>
         <span className="route-summary-card__value">
           {formatDistance(summary.totalDistanceMiles)}
         </span>
       </div>
 
       <div className="route-summary-card__item">
-        <span className="route-summary-card__label">Driving Duration</span>
+        <span className="route-summary-card__label">Drive time</span>
         <span className="route-summary-card__value">
           {formatDuration(summary.totalDurationHours)}
         </span>
       </div>
 
       <div className="route-summary-card__item">
-        <span className="route-summary-card__label">Estimated Arrival</span>
-        <span className="route-summary-card__value">
-          {formatDateTime(summary.estimatedArrival)}
+        <span className="route-summary-card__label">Arrival</span>
+        <span className="route-summary-card__value route-summary-card__value--sm">
+          {formatDateTime(summary.estimatedArrival, timeZone)}
         </span>
       </div>
 
       <div className="route-summary-card__item">
-        <span className="route-summary-card__label">Number of Days</span>
+        <span className="route-summary-card__label">Days</span>
         <span className="route-summary-card__value">{summary.numberOfDays}</span>
       </div>
     </section>

@@ -1,55 +1,77 @@
 /*
- * Design tokens shared across the app: palette, spacing, and type scale.
- *
- * Centralizing these keeps the "modern atlas / dispatch software" look
- * consistent across every component instead of repeating raw values.
+ * Design tokens: dark dispatch / atlas theme.
+ * Cool slate neutrals + a single teal accent (map-route language).
  */
 
 :root {
-  /* Palette: warm parchment background, navy ink, muted map accents */
-  --color-background: #f5f1e8;
-  --color-surface: #fffdf8;
-  --color-ink: #1f2733;
-  --color-ink-muted: #5b6472;
-  --color-border: #ddd5c2;
-  --color-accent: #b5652f;
-  --color-accent-hover: #9c5527;
-  --color-accent-soft: rgba(181, 101, 47, 0.12);
+  /* Surfaces — off-black, never pure #000 */
+  --color-background: #0b0f14;
+  --color-surface: #121820;
+  --color-surface-elevated: #181f29;
+  --color-surface-glass: rgba(18, 24, 32, 0.78);
+  --color-surface-glass-strong: rgba(12, 16, 22, 0.92);
 
-  /* Status colors, kept muted to match the rest of the palette */
-  --color-danger: #9a3324;
-  --color-danger-bg: #fbeae5;
-  --color-danger-border: #e3b8a9;
+  /* Ink */
+  --color-ink: #e8edf4;
+  --color-ink-muted: #8b97a8;
+  --color-ink-faint: #5c6a7c;
 
-  /* Duty-status colors, shared between the log sheet and the route map */
-  --color-driving: #1f6f78;
-  --color-on-duty: #c68a2e;
-  --color-sleeper-berth: #545a91;
-  --color-off-duty: #7c828a;
+  /* Borders & hairlines */
+  --color-border: rgba(232, 237, 244, 0.08);
+  --color-border-strong: rgba(232, 237, 244, 0.14);
 
-  /* Spacing scale */
+  /* Accent — desaturated teal, saturation kept under 80% */
+  --color-accent: #2f9e8f;
+  --color-accent-hover: #3bb5a4;
+  --color-accent-soft: rgba(47, 158, 143, 0.16);
+  --color-accent-glow: rgba(47, 158, 143, 0.35);
+
+  /* Status */
+  --color-danger: #e07a6a;
+  --color-danger-bg: rgba(224, 122, 106, 0.12);
+  --color-danger-border: rgba(224, 122, 106, 0.35);
+
+  /* Duty-status colors (readable on dark log sheets) */
+  --color-driving: #2f9e8f;
+  --color-on-duty: #c9a04a;
+  --color-sleeper-berth: #7a84c4;
+  --color-off-duty: #6b7585;
+
+  /* Spacing */
   --space-xs: 4px;
   --space-sm: 8px;
   --space-md: 16px;
   --space-lg: 24px;
   --space-xl: 40px;
+  --space-2xl: 64px;
 
   /* Typography */
-  --font-ui: "Segoe UI", system-ui, sans-serif;
-  --font-mono: "Courier New", ui-monospace, monospace;
+  --font-ui: "Outfit", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "Cascadia Code", ui-monospace, monospace;
 
-  /* Rounded corners, used consistently on every card/input/button */
-  --radius-sm: 4px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
+  /* Shape system: soft containers, tighter inputs */
+  --radius-sm: 8px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+  --radius-xl: 28px;
 
-  /* Elevation */
-  --shadow-card: 0 1px 3px rgba(31, 39, 51, 0.08), 0 1px 2px rgba(31, 39, 51, 0.06);
-  --shadow-card-hover: 0 4px 10px rgba(31, 39, 51, 0.1), 0 1px 3px rgba(31, 39, 51, 0.08);
+  /* Elevation — tinted toward background hue */
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.24), 0 12px 32px rgba(0, 0, 0, 0.36);
+  --shadow-card-hover: 0 2px 4px rgba(0, 0, 0, 0.28), 0 18px 40px rgba(0, 0, 0, 0.42);
+  --shadow-panel: 0 8px 40px rgba(0, 0, 0, 0.55), 0 0 0 1px var(--color-border);
+  --shadow-glow: 0 0 0 1px var(--color-accent-soft), 0 12px 40px rgba(47, 158, 143, 0.12);
 
   /* Motion */
-  --transition-fast: 150ms ease;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --transition-fast: 160ms var(--ease-out);
+  --transition-med: 320ms var(--ease-out);
 
   /* Layout */
-  --page-max-width: 1200px;
+  --page-max-width: 1440px;
+  --panel-width: 440px;
+  --z-map: 0;
+  --z-overlay: 10;
+  --z-panel: 20;
+  --z-brand: 30;
+  --z-grain: 50;
 }

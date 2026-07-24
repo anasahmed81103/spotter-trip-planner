@@ -1,7 +1,7 @@
 /**
  * Formats ISO datetime strings returned by the API for display.
  */
-export function formatDateTime(isoString: string): string {
+export function formatDateTime(isoString: string, timeZone?: string): string {
   const date = new Date(isoString);
 
   if (Number.isNaN(date.getTime())) {
@@ -9,10 +9,12 @@ export function formatDateTime(isoString: string): string {
   }
 
   return date.toLocaleString(undefined, {
+    timeZone,
     weekday: "short",
     month: "short",
     day: "numeric",
     hour: "2-digit",
     minute: "2-digit",
+    timeZoneName: "short",
   });
 }

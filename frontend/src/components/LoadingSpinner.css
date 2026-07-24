@@ -1,17 +1,26 @@
-/* Styles for the shared LoadingSpinner component. */
+/* Compact accent spinner. */
 
 .loading-spinner {
   display: inline-block;
-  width: 20px;
-  height: 20px;
-  border: 2px solid var(--color-border);
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--color-border-strong);
   border-top-color: var(--color-accent);
   border-radius: 50%;
-  animation: loading-spinner-rotate 0.7s linear infinite;
+  animation: loading-spinner-rotate 0.65s linear infinite;
+  flex-shrink: 0;
 }
 
 @keyframes loading-spinner-rotate {
   to {
     transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loading-spinner {
+    animation: none;
+    border-top-color: var(--color-accent);
+    opacity: 0.7;
   }
 }

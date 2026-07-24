@@ -12,6 +12,7 @@ import os
 from typing import List, Tuple
 
 import requests
+from timezonefinder import TimezoneFinder
 
 from scheduler.domain import RouteInfo
 
@@ -20,6 +21,7 @@ from scheduler.domain import RouteInfo
 # instances via the environment instead of changing any code here.
 _DEFAULT_OSRM_BASE_URL = "https://router.project-osrm.org"
 _DEFAULT_NOMINATIM_BASE_URL = "https://nominatim.openstreetmap.org"
+_TIMEZONE_FINDER = TimezoneFinder(in_memory=True)
 
 
 class RouteServiceError(Exception):
@@ -32,6 +34,10 @@ class GeocodingError(RouteServiceError):
 
 class RoutingError(RouteServiceError):
     """Raised when OSRM could not compute a driving route between coordinates."""
+
+
+class TimezoneLookupError(RouteServiceError):
+    """Raised when the current location's coordinates cannot be mapped to a timezone."""
 
 
 class RouteService:
@@ -62,6 +68,7 @@ class RouteService:
         current_coordinates = self._geocode_location(current_location)
         pickup_coordinates = self._geocode_location(pickup_location)
         dropoff_coordinates = self._geocode_location(dropoff_location)
+        origin_timezone = self._find_timezone(current_coordinates)
 
         route = self._request_route([current_coordinates, pickup_coordinates, dropoff_coordinates])
 
@@ -72,7 +79,32 @@ class RouteService:
             # expects (latitude, longitude), so the pair order is flipped
             # here rather than leaking OSRM's convention to the frontend.
             geometry=[(latitude, longitude) for longitude, latitude in route["geometry"]["coordinates"]],
+            origin_timezone=origin_timezone,
         )
+
+    def _find_timezone(self, coordinates: Tuple[float, float]) -> str:
+        """
+        Resolve the current location's coordinates to an IANA timezone.
+
+        timezonefinder performs this lookup locally against geographic
+        boundary data, so planning does not add another network dependency.
+        The resulting name (for example, America/Chicago) is carried with
+        RouteInfo and becomes the scheduler's clock and log-sheet timezone.
+        """
+        latitude, longitude = coordinates
+        try:
+            timezone_name = _TIMEZONE_FINDER.timezone_at(lat=latitude, lng=longitude)
+        except ValueError as error:
+            raise TimezoneLookupError(
+                f"Could not determine a timezone for coordinates ({latitude}, {longitude})."
+            ) from error
+
+        if timezone_name is None:
+            raise TimezoneLookupError(
+                f"Could not determine a timezone for coordinates ({latitude}, {longitude})."
+            )
+
+        return timezone_name
 
     def _geocode_location(self, location: str) -> Tuple[float, float]:
         """

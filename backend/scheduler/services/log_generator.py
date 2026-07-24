@@ -11,7 +11,7 @@ TripSummary, or TripPlan at all - those are entirely LogGenerator's
 concern.
 """
 
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 from typing import Dict, List
 
 from scheduler.domain import DailyLog, RouteInfo, ScheduleEvent, TripPlan, TripSummary
@@ -97,7 +97,14 @@ class LogGenerator:
         segment_start = event.start_time
 
         while segment_start < event.end_time:
-            start_of_next_day = datetime.combine(segment_start.date() + timedelta(days=1), time.min)
+            # Keep midnight in the event's origin timezone. Dropping tzinfo
+            # here would mix aware and naive datetimes and would also make
+            # the frontend's 24-hour sheet use the server's timezone.
+            start_of_next_day = datetime.combine(
+                segment_start.date() + timedelta(days=1),
+                time.min,
+                tzinfo=segment_start.tzinfo,
+            )
             segment_end = min(event.end_time, start_of_next_day)
 
             segments.append(
@@ -144,5 +151,7 @@ class LogGenerator:
         return driving_events[-1].end_time
 
     def _duration_in_hours(self, event: ScheduleEvent) -> float:
-        """Return an event's length in hours, computed from its start and end times."""
-        return (event.end_time - event.start_time).total_seconds() / self._SECONDS_PER_HOUR
+        """Return actual elapsed hours, including across daylight-saving transitions."""
+        start_utc = event.start_time.astimezone(timezone.utc)
+        end_utc = event.end_time.astimezone(timezone.utc)
+        return (end_utc - start_utc).total_seconds() / self._SECONDS_PER_HOUR
