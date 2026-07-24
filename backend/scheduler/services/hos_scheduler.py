@@ -150,10 +150,55 @@ class HOSScheduler:
         """
         The core of the engine: turn the remaining drive time into a
         sequence of driving / break / off-duty-reset / fuel-stop events
-        until the driver reaches the dropoff location. Every FMCSA rule in
-        constants.py will eventually be applied here.
+        until the driver reaches the dropoff location.
+
+        This currently just delegates to _drive_until_next_required_stop().
+        Once that method can determine why it stopped, this method will
+        loop it until the destination is reached - each call advancing the
+        trip by one driving segment plus whatever stop interrupted it.
         """
-        raise NotImplementedError
+        self._drive_until_next_required_stop(state)
+
+    def _drive_until_next_required_stop(self, state: _SchedulingState) -> None:
+        """
+        Drive the truck forward until something legally or physically
+        requires it to stop, then record that driving as a ScheduleEvent
+        and update state accordingly.
+
+        Eventually, this will be the single place that decides which of
+        the following stops the truck first, given the current state:
+          - destination reached (remaining distance/duration hits zero)
+          - mandatory 30-minute break (8 hours of driving without one)
+          - 11-hour driving limit reached
+          - 14-hour on-duty window reached
+          - a fuel stop is due (every FUEL_STOP_INTERVAL_MILES)
+          - a 10-hour off-duty reset is required
+          - the 70-hour/8-day cycle limit is reached
+
+        For now, destination-reached is the only stopping condition that
+        exists, so this simply drives the full remaining distance/duration
+        in one continuous event. This is the baseline behavior that each
+        rule above will later interrupt - _generate_driving_schedule() will
+        then need to call this repeatedly instead of once.
+        """
+        driving_start = state.current_time
+        driving_duration_hours = state.remaining_duration_hours
+        driving_end = driving_start + timedelta(hours=driving_duration_hours)
+
+        state.events.append(
+            ScheduleEvent(
+                status=DutyStatus.DRIVING,
+                start_time=driving_start,
+                end_time=driving_end,
+                location=state.trip_request.dropoff_location,
+                remark="Driving",
+            )
+        )
+
+        state.current_time = driving_end
+        state.cycle_hours_used += driving_duration_hours
+        state.remaining_distance_miles = 0
+        state.remaining_duration_hours = 0
 
     def _add_dropoff(self, state: _SchedulingState) -> None:
         """
