@@ -1,1 +1,7 @@
 /* Styles for DailyLogList. */
+
+.daily-log-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+}

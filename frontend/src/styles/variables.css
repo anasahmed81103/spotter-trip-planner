@@ -13,6 +13,13 @@
   --color-ink-muted: #5b6472;
   --color-border: #ddd5c2;
   --color-accent: #b5652f;
+  --color-accent-hover: #9c5527;
+  --color-accent-soft: rgba(181, 101, 47, 0.12);
+
+  /* Status colors, kept muted to match the rest of the palette */
+  --color-danger: #9a3324;
+  --color-danger-bg: #fbeae5;
+  --color-danger-border: #e3b8a9;
 
   /* Duty-status colors, shared between the log sheet and the route map */
   --color-driving: #1f6f78;
@@ -31,6 +38,18 @@
   --font-ui: "Segoe UI", system-ui, sans-serif;
   --font-mono: "Courier New", ui-monospace, monospace;
 
+  /* Rounded corners, used consistently on every card/input/button */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+
   /* Elevation */
   --shadow-card: 0 1px 3px rgba(31, 39, 51, 0.08), 0 1px 2px rgba(31, 39, 51, 0.06);
+  --shadow-card-hover: 0 4px 10px rgba(31, 39, 51, 0.1), 0 1px 3px rgba(31, 39, 51, 0.08);
+
+  /* Motion */
+  --transition-fast: 150ms ease;
+
+  /* Layout */
+  --page-max-width: 1200px;
 }

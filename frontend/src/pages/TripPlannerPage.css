@@ -1,1 +1,62 @@
 /* Layout styles for TripPlannerPage. */
+
+.trip-planner-page {
+  max-width: var(--page-max-width);
+  margin: 0 auto;
+  padding: var(--space-lg) var(--space-lg) var(--space-xl);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xl);
+}
+
+.trip-planner-page__header {
+  padding-bottom: var(--space-md);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.trip-planner-page__header h1 {
+  font-size: 1.75rem;
+  color: var(--color-ink);
+  letter-spacing: 0.01em;
+}
+
+.trip-planner-page__main {
+  display: grid;
+  grid-template-columns: minmax(280px, 380px) 1fr;
+  gap: var(--space-lg);
+  align-items: start;
+}
+
+.trip-planner-page__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.trip-planner-page__map {
+  min-height: 320px;
+}
+
+.trip-planner-page__summary,
+.trip-planner-page__logs {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+}
+
+@media (max-width: 900px) {
+  .trip-planner-page__main {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 600px) {
+  .trip-planner-page {
+    padding: var(--space-md);
+    gap: var(--space-lg);
+  }
+
+  .trip-planner-page__header h1 {
+    font-size: 1.4rem;
+  }
+}

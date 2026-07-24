@@ -7,8 +7,13 @@
   padding: var(--space-lg);
   background-color: var(--color-surface);
   border: 1px solid var(--color-border);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   box-shadow: var(--shadow-card);
+  transition: box-shadow var(--transition-fast);
+}
+
+.route-summary-card:hover {
+  box-shadow: var(--shadow-card-hover);
 }
 
 .route-summary-card__item {
@@ -29,4 +34,15 @@
   font-size: 1.25rem;
   font-weight: 600;
   color: var(--color-ink);
+}
+
+@media (max-width: 600px) {
+  .route-summary-card {
+    grid-template-columns: repeat(2, 1fr);
+    padding: var(--space-md);
+  }
+
+  .route-summary-card__value {
+    font-size: 1.1rem;
+  }
 }
