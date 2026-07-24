@@ -15,7 +15,7 @@ import { ErrorBanner } from "../components/ErrorBanner";
 import "./TripPlannerPage.css";
 
 export function TripPlannerPage() {
-  const { tripPlan, isLoading, error, submitTrip } = useTripPlanner();
+  const { tripRequest, setTripRequest, tripPlan, loading, error, submitTrip } = useTripPlanner();
 
   return (
     <div className="trip-planner-page">
@@ -25,7 +25,12 @@ export function TripPlannerPage() {
 
       <div className="trip-planner-page__main">
         <section className="trip-planner-page__form">
-          <TripForm onSubmit={submitTrip} isSubmitting={isLoading} />
+          <TripForm
+            tripRequest={tripRequest}
+            setTripRequest={setTripRequest}
+            submitTrip={submitTrip}
+            loading={loading}
+          />
           {error && <ErrorBanner message={error} />}
         </section>
 

@@ -1,6 +1,8 @@
 /**
- * Collects the four inputs needed to plan a trip and calls onSubmit with
- * a validated TripRequest.
+ * Collects the four inputs needed to plan a trip as controlled inputs
+ * bound to `tripRequest`, and calls `submitTrip()` once the request
+ * passes validation. Does not call the API directly - that's submitTrip's
+ * job, supplied by the caller (via useTripPlanner).
  */
 
 import { useState } from "react";
@@ -11,80 +13,94 @@ import { LoadingSpinner } from "./LoadingSpinner";
 import "./TripForm.css";
 
 interface TripFormProps {
-  onSubmit: (request: TripRequest) => void;
-  isSubmitting: boolean;
+  tripRequest: TripRequest;
+  setTripRequest: (value: TripRequest | ((previous: TripRequest) => TripRequest)) => void;
+  submitTrip: () => void;
+  loading: boolean;
 }
 
-interface FormState {
-  currentLocation: string;
-  pickupLocation: string;
-  dropoffLocation: string;
-  currentCycleUsedHours: string;
+type TextField = "currentLocation" | "pickupLocation" | "dropoffLocation";
+
+interface ValidationErrors {
+  currentLocation?: string;
+  pickupLocation?: string;
+  dropoffLocation?: string;
+  currentCycleUsedHours?: string;
 }
 
-const INITIAL_STATE: FormState = {
-  currentLocation: "",
-  pickupLocation: "",
-  dropoffLocation: "",
-  currentCycleUsedHours: "",
+const FIELD_LABELS: Record<TextField, string> = {
+  currentLocation: "Current location",
+  pickupLocation: "Pickup location",
+  dropoffLocation: "Dropoff location",
 };
 
-export function TripForm({ onSubmit, isSubmitting }: TripFormProps) {
-  const [formState, setFormState] = useState<FormState>(INITIAL_STATE);
-  const [validationError, setValidationError] = useState<string | null>(null);
+function validate(tripRequest: TripRequest): ValidationErrors {
+  const errors: ValidationErrors = {};
 
-  function handleChange(field: keyof FormState) {
+  for (const field of Object.keys(FIELD_LABELS) as TextField[]) {
+    if (!tripRequest[field].trim()) {
+      errors[field] = `${FIELD_LABELS[field]} is required.`;
+    }
+  }
+
+  if (tripRequest.currentCycleUsedHours < 0) {
+    errors.currentCycleUsedHours = "Cycle hours used cannot be negative.";
+  }
+
+  return errors;
+}
+
+export function TripForm({ tripRequest, setTripRequest, submitTrip, loading }: TripFormProps) {
+  const [errors, setErrors] = useState<ValidationErrors>({});
+
+  function handleTextChange(field: TextField) {
     return (event: ChangeEvent<HTMLInputElement>) => {
-      setFormState((previous) => ({ ...previous, [field]: event.target.value }));
+      const { value } = event.target;
+      setTripRequest((previous) => ({ ...previous, [field]: value }));
+      setErrors((previous) => ({ ...previous, [field]: undefined }));
     };
+  }
+
+  function handleCycleHoursChange(event: ChangeEvent<HTMLInputElement>) {
+    const value = Number(event.target.value);
+    setTripRequest((previous) => ({
+      ...previous,
+      currentCycleUsedHours: Number.isNaN(value) ? 0 : value,
+    }));
+    setErrors((previous) => ({ ...previous, currentCycleUsedHours: undefined }));
   }
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    const currentLocation = formState.currentLocation.trim();
-    const pickupLocation = formState.pickupLocation.trim();
-    const dropoffLocation = formState.dropoffLocation.trim();
-    const currentCycleUsedHours = Number(formState.currentCycleUsedHours);
+    const validationErrors = validate(tripRequest);
+    setErrors(validationErrors);
 
-    if (!currentLocation || !pickupLocation || !dropoffLocation) {
-      setValidationError("Please fill in current, pickup, and dropoff locations.");
+    if (Object.keys(validationErrors).length > 0) {
       return;
     }
 
-    if (formState.currentCycleUsedHours.trim() === "" || Number.isNaN(currentCycleUsedHours)) {
-      setValidationError("Please enter a valid number of cycle hours used.");
-      return;
-    }
-
-    if (currentCycleUsedHours < 0 || currentCycleUsedHours > 70) {
-      setValidationError("Cycle hours used must be between 0 and 70.");
-      return;
-    }
-
-    setValidationError(null);
-    onSubmit({
-      currentLocation,
-      pickupLocation,
-      dropoffLocation,
-      currentCycleUsedHours,
-    });
+    submitTrip();
   }
 
   return (
-    <form className="trip-form" onSubmit={handleSubmit}>
+    <form className="trip-form" onSubmit={handleSubmit} noValidate>
       <div className="trip-form__field">
         <label htmlFor="currentLocation">Current Location</label>
         <input
           id="currentLocation"
           name="currentLocation"
           type="text"
-          value={formState.currentLocation}
-          onChange={handleChange("currentLocation")}
+          value={tripRequest.currentLocation}
+          onChange={handleTextChange("currentLocation")}
           placeholder="e.g. Dallas, TX"
-          disabled={isSubmitting}
-          required
+          disabled={loading}
         />
+        {errors.currentLocation && (
+          <p className="trip-form__field-error" role="alert">
+            {errors.currentLocation}
+          </p>
+        )}
       </div>
 
       <div className="trip-form__field">
@@ -93,12 +109,16 @@ export function TripForm({ onSubmit, isSubmitting }: TripFormProps) {
           id="pickupLocation"
           name="pickupLocation"
           type="text"
-          value={formState.pickupLocation}
-          onChange={handleChange("pickupLocation")}
+          value={tripRequest.pickupLocation}
+          onChange={handleTextChange("pickupLocation")}
           placeholder="e.g. Fort Worth, TX"
-          disabled={isSubmitting}
-          required
+          disabled={loading}
         />
+        {errors.pickupLocation && (
+          <p className="trip-form__field-error" role="alert">
+            {errors.pickupLocation}
+          </p>
+        )}
       </div>
 
       <div className="trip-form__field">
@@ -107,12 +127,16 @@ export function TripForm({ onSubmit, isSubmitting }: TripFormProps) {
           id="dropoffLocation"
           name="dropoffLocation"
           type="text"
-          value={formState.dropoffLocation}
-          onChange={handleChange("dropoffLocation")}
+          value={tripRequest.dropoffLocation}
+          onChange={handleTextChange("dropoffLocation")}
           placeholder="e.g. Denver, CO"
-          disabled={isSubmitting}
-          required
+          disabled={loading}
         />
+        {errors.dropoffLocation && (
+          <p className="trip-form__field-error" role="alert">
+            {errors.dropoffLocation}
+          </p>
+        )}
       </div>
 
       <div className="trip-form__field">
@@ -121,22 +145,22 @@ export function TripForm({ onSubmit, isSubmitting }: TripFormProps) {
           id="currentCycleUsedHours"
           name="currentCycleUsedHours"
           type="number"
-          min={0}
-          max={70}
           step="0.1"
-          value={formState.currentCycleUsedHours}
-          onChange={handleChange("currentCycleUsedHours")}
+          value={tripRequest.currentCycleUsedHours}
+          onChange={handleCycleHoursChange}
           placeholder="e.g. 12"
-          disabled={isSubmitting}
-          required
+          disabled={loading}
         />
+        {errors.currentCycleUsedHours && (
+          <p className="trip-form__field-error" role="alert">
+            {errors.currentCycleUsedHours}
+          </p>
+        )}
       </div>
 
-      {validationError && <p className="trip-form__error" role="alert">{validationError}</p>}
-
       <div className="trip-form__actions">
-        <Button label="Plan Trip" type="submit" disabled={isSubmitting} />
-        {isSubmitting && <LoadingSpinner />}
+        <Button label="Plan Trip" type="submit" disabled={loading} />
+        {loading && <LoadingSpinner />}
       </div>
     </form>
   );
