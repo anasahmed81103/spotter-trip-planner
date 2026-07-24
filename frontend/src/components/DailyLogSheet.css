@@ -1,1 +1,87 @@
 /* Styles for DailyLogSheet. */
+
+.daily-log-sheet {
+  padding: var(--space-lg);
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  box-shadow: var(--shadow-card);
+}
+
+.daily-log-sheet__date {
+  margin: 0 0 var(--space-md);
+  color: var(--color-ink);
+}
+
+.daily-log-sheet__grid {
+  display: block;
+  width: 100%;
+  height: auto;
+  font-family: var(--font-mono);
+}
+
+.daily-log-sheet__gridline {
+  stroke: var(--color-border);
+  stroke-width: 1;
+}
+
+.daily-log-sheet__gridline--major {
+  stroke: var(--color-ink-muted);
+}
+
+.daily-log-sheet__hour-label {
+  fill: var(--color-ink-muted);
+  font-size: 10px;
+}
+
+.daily-log-sheet__row-label {
+  fill: var(--color-ink);
+  font-size: 12px;
+  font-family: var(--font-ui);
+}
+
+.daily-log-sheet__row-background {
+  fill: var(--color-surface);
+}
+
+.daily-log-sheet__row-background--alt {
+  fill: var(--color-background);
+}
+
+.daily-log-sheet__grid-border {
+  stroke: var(--color-ink-muted);
+  stroke-width: 1.5;
+}
+
+.daily-log-sheet__step-line {
+  stroke: var(--color-ink);
+  stroke-width: 2;
+}
+
+.daily-log-sheet__totals {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: var(--space-md);
+  margin: var(--space-md) 0 0;
+}
+
+.daily-log-sheet__totals div {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.daily-log-sheet__totals dt {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--color-ink-muted);
+}
+
+.daily-log-sheet__totals dd {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--color-ink);
+}
