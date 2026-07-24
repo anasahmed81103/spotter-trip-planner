@@ -176,13 +176,13 @@ class HOSScheduler:
           - the 70-hour/8-day cycle limit is reached
 
         For now, destination-reached is the only stopping condition that
-        exists, so this simply drives the full remaining distance/duration
-        in one continuous event. This is the baseline behavior that each
-        rule above will later interrupt - _generate_driving_schedule() will
-        then need to call this repeatedly instead of once.
+        exists, so this simply drives for _calculate_next_driving_limit()'s
+        result in one continuous event. This is the baseline behavior that
+        each rule above will later interrupt - _generate_driving_schedule()
+        will then need to call this repeatedly instead of once.
         """
         driving_start = state.current_time
-        driving_duration_hours = state.remaining_duration_hours
+        driving_duration_hours = self._calculate_next_driving_limit(state)
         driving_end = driving_start + timedelta(hours=driving_duration_hours)
 
         state.events.append(
@@ -199,6 +199,28 @@ class HOSScheduler:
         state.cycle_hours_used += driving_duration_hours
         state.remaining_distance_miles = 0
         state.remaining_duration_hours = 0
+
+    def _calculate_next_driving_limit(self, state: _SchedulingState) -> float:
+        """
+        Determine how many hours the truck may legally drive before it
+        must stop, given everything currently known about its state.
+
+        Eventually this will return the smallest of several limits:
+          - remaining trip duration (nothing left to drive)
+          - remaining 11-hour driving allowance for the day
+          - remaining time in the 14-hour on-duty window
+          - remaining time until a mandatory 30-minute break is due
+          - remaining distance until a fuel stop is due, converted to time
+          - remaining cycle hours before the 70-hour/8-day limit
+
+        For now, only the first of those exists, so the limit is simply
+        whatever trip duration remains - the truck always drives straight
+        to the destination. _drive_until_next_required_stop() uses this
+        return value instead of reading state.remaining_duration_hours
+        directly, so adding the rules above later only changes this one
+        method.
+        """
+        return state.remaining_duration_hours
 
     def _add_dropoff(self, state: _SchedulingState) -> None:
         """
