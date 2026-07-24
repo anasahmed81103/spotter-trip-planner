@@ -12,6 +12,10 @@ interface ButtonProps {
   type?: "button" | "submit";
 }
 
-export function Button(_props: ButtonProps) {
-  return null;
+export function Button({ label, onClick, disabled = false, type = "button" }: ButtonProps) {
+  return (
+    <button type={type} className="button" onClick={onClick} disabled={disabled}>
+      {label}
+    </button>
+  );
 }

@@ -5,5 +5,5 @@
 import "./LoadingSpinner.css";
 
 export function LoadingSpinner() {
-  return null;
+  return <span className="loading-spinner" role="status" aria-label="Loading" />;
 }
