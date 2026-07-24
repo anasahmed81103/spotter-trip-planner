@@ -1,0 +1,36 @@
+/*
+ * Design tokens shared across the app: palette, spacing, and type scale.
+ *
+ * Centralizing these keeps the "modern atlas / dispatch software" look
+ * consistent across every component instead of repeating raw values.
+ */
+
+:root {
+  /* Palette: warm parchment background, navy ink, muted map accents */
+  --color-background: #f5f1e8;
+  --color-surface: #fffdf8;
+  --color-ink: #1f2733;
+  --color-ink-muted: #5b6472;
+  --color-border: #ddd5c2;
+  --color-accent: #b5652f;
+
+  /* Duty-status colors, shared between the log sheet and the route map */
+  --color-driving: #1f6f78;
+  --color-on-duty: #c68a2e;
+  --color-sleeper-berth: #545a91;
+  --color-off-duty: #7c828a;
+
+  /* Spacing scale */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 40px;
+
+  /* Typography */
+  --font-ui: "Segoe UI", system-ui, sans-serif;
+  --font-mono: "Courier New", ui-monospace, monospace;
+
+  /* Elevation */
+  --shadow-card: 0 1px 3px rgba(31, 39, 51, 0.08), 0 1px 2px rgba(31, 39, 51, 0.06);
+}

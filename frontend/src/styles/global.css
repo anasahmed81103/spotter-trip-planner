@@ -1,0 +1,17 @@
+/*
+ * Global resets and base typography.
+ *
+ * Kept intentionally small - component-level styling lives in each
+ * component's own CSS file. This file only sets the page-wide baseline.
+ */
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background-color: var(--color-background);
+  color: var(--color-ink);
+  font-family: var(--font-ui);
+}
