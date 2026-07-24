@@ -226,13 +226,37 @@ class HOSScheduler:
         """
         Record the on-duty (not driving) period spent at the dropoff
         location once driving is complete.
+
+        Mirrors _add_pickup(): dropoff always takes a fixed
+        PICKUP_DROPOFF_DURATION_HOURS and is logged as On Duty (Not
+        Driving), starting immediately after the driving event ends. It
+        only advances the clock and cycle hours used - remaining
+        distance/duration are already zero by this point and are left
+        untouched.
         """
-        raise NotImplementedError
+        dropoff_start = state.current_time
+        dropoff_end = dropoff_start + timedelta(hours=PICKUP_DROPOFF_DURATION_HOURS)
+
+        state.events.append(
+            ScheduleEvent(
+                status=DutyStatus.ON_DUTY,
+                start_time=dropoff_start,
+                end_time=dropoff_end,
+                location=state.trip_request.dropoff_location,
+                remark="Dropoff",
+            )
+        )
+
+        state.current_time = dropoff_end
+        state.cycle_hours_used += PICKUP_DROPOFF_DURATION_HOURS
 
     def _finalize_schedule(self, state: _SchedulingState) -> List[ScheduleEvent]:
         """
-        Return the collected events in chronological order. Also the future
-        home of any end-of-pipeline consistency checks (e.g. verifying
-        events don't overlap) before handing the schedule to LogGenerator.
+        Return the events accumulated during scheduling, in the
+        chronological order they were added (pickup, driving, dropoff).
+
+        Deliberately small: splitting events into per-day DailyLogs and
+        computing trip-level summaries is LogGenerator's job, not
+        HOSScheduler's - this method only hands back the raw events.
         """
-        raise NotImplementedError
+        return state.events
