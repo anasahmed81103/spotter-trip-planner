@@ -108,10 +108,162 @@
   overflow: hidden;
 }
 
+.daily-log-sheet__chart,
 .daily-log-sheet__grid,
 .daily-log-sheet__totals {
   position: relative;
   pointer-events: none;
+}
+
+.daily-log-sheet__chart {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.daily-log-sheet__remarks {
+  position: relative;
+  z-index: 2;
+  margin-top: 2px;
+  pointer-events: none;
+}
+
+.daily-log-sheet__remarks-label {
+  margin: 0 0 6px;
+  padding-left: 2px;
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-ink-faint);
+}
+
+.daily-log-sheet__remarks-track {
+  position: relative;
+  height: 28px;
+  border-top: 1px dashed var(--color-border);
+}
+
+.daily-log-sheet__remark {
+  position: absolute;
+  top: 8px;
+  z-index: 1;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  transform: translateX(-50%);
+  cursor: help;
+  pointer-events: auto;
+}
+
+.daily-log-sheet__remark:hover,
+.daily-log-sheet__remark:focus-visible {
+  z-index: 3;
+}
+
+.daily-log-sheet__remark:focus-visible {
+  outline: none;
+}
+
+.daily-log-sheet__remark-icon {
+  display: block;
+  width: 10px;
+  height: 10px;
+  margin: 3px auto 0;
+  border-radius: 50%;
+  border: 1.5px solid rgba(232, 237, 244, 0.85);
+  box-shadow: 0 0 0 3px rgba(18, 24, 32, 0.55);
+  transition:
+    transform var(--transition-fast),
+    box-shadow var(--transition-fast);
+}
+
+.daily-log-sheet__remark--off_duty .daily-log-sheet__remark-icon {
+  background: var(--color-off-duty);
+}
+
+.daily-log-sheet__remark--sleeper_berth .daily-log-sheet__remark-icon {
+  background: var(--color-sleeper-berth);
+}
+
+.daily-log-sheet__remark--driving .daily-log-sheet__remark-icon {
+  background: var(--color-driving);
+}
+
+.daily-log-sheet__remark--on_duty .daily-log-sheet__remark-icon {
+  background: var(--color-on-duty);
+}
+
+.daily-log-sheet__remark:hover .daily-log-sheet__remark-icon,
+.daily-log-sheet__remark:focus-visible .daily-log-sheet__remark-icon {
+  transform: scale(1.2);
+  box-shadow:
+    0 0 0 3px rgba(18, 24, 32, 0.55),
+    0 0 0 6px rgba(47, 158, 143, 0.22);
+}
+
+.daily-log-sheet__remark-tooltip {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: max-content;
+  max-width: 180px;
+  padding: 7px 9px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border-strong);
+  background: var(--color-surface-elevated);
+  box-shadow: var(--shadow-card);
+  text-align: left;
+  line-height: 1.3;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translateX(-50%) translateY(4px);
+  transition:
+    opacity var(--transition-fast),
+    transform var(--transition-fast),
+    visibility var(--transition-fast);
+}
+
+.daily-log-sheet__remark-tooltip::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  width: 8px;
+  height: 8px;
+  margin-left: -4px;
+  margin-top: -5px;
+  border-right: 1px solid var(--color-border-strong);
+  border-bottom: 1px solid var(--color-border-strong);
+  background: var(--color-surface-elevated);
+  transform: rotate(45deg);
+}
+
+.daily-log-sheet__remark:hover .daily-log-sheet__remark-tooltip,
+.daily-log-sheet__remark:focus-visible .daily-log-sheet__remark-tooltip {
+  opacity: 1;
+  visibility: visible;
+  transform: translateX(-50%) translateY(0);
+}
+
+.daily-log-sheet__remark-activity {
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--color-ink);
+}
+
+.daily-log-sheet__remark-detail {
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  color: var(--color-ink-muted);
 }
 
 .daily-log-sheet__gridline {
@@ -250,6 +402,10 @@
   background: rgba(232, 237, 244, 0.025);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
+}
+
+.daily-log-modal__chart .daily-log-sheet__remark-tooltip {
+  max-width: 220px;
 }
 
 .daily-log-sheet__grid--expanded {
