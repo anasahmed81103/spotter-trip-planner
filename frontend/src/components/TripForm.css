@@ -142,8 +142,16 @@
   letter-spacing: 0.04em;
 }
 
+.trip-form__field-hint {
+  margin: 0;
+  font-size: 0.72rem;
+  line-height: 1.4;
+  color: var(--color-ink-faint);
+}
+
 .trip-form__field-error {
   font-size: 0.8rem;
+  line-height: 1.4;
   color: var(--color-danger);
 }
 

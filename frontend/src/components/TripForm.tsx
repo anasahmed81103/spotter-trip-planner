@@ -39,6 +39,9 @@ const FIELD_LABELS: Record<TextField, string> = {
   dropoffLocation: "Dropoff location",
 };
 
+// Mirrors MAX_CYCLE_HOURS in the backend scheduler constants.
+const MAX_CYCLE_HOURS = 70;
+
 function validate(tripRequest: TripRequest): ValidationErrors {
   const errors: ValidationErrors = {};
 
@@ -48,8 +51,16 @@ function validate(tripRequest: TripRequest): ValidationErrors {
     }
   }
 
-  if (tripRequest.currentCycleUsedHours < 0) {
+  const cycleHours = tripRequest.currentCycleUsedHours;
+
+  if (Number.isNaN(cycleHours)) {
+    errors.currentCycleUsedHours = "Enter cycle hours used as a number.";
+  } else if (cycleHours < 0) {
     errors.currentCycleUsedHours = "Cycle hours used cannot be negative.";
+  } else if (cycleHours >= MAX_CYCLE_HOURS) {
+    errors.currentCycleUsedHours =
+      `Cycle hours used must be less than ${MAX_CYCLE_HOURS}. The 70-hour / 8-day limit is ` +
+      "already reached, so a 34-hour restart is required before this driver can drive again.";
   }
 
   return errors;
@@ -77,7 +88,8 @@ export function TripForm({ tripRequest, setTripRequest, submitTrip, loading }: T
   }
 
   function handleCycleHoursChange(event: ChangeEvent<HTMLInputElement>) {
-    const value = Number(event.target.value);
+    const rawValue = event.target.value;
+    const value = rawValue === "" ? 0 : Number(rawValue);
     setTripRequest((previous) => ({
       ...previous,
       currentCycleUsedHours: Number.isNaN(value) ? 0 : value,
@@ -174,13 +186,19 @@ export function TripForm({ tripRequest, setTripRequest, submitTrip, loading }: T
             type="number"
             step="0.1"
             min="0"
+            max={MAX_CYCLE_HOURS}
             value={tripRequest.currentCycleUsedHours}
             onChange={handleCycleHoursChange}
             placeholder="12"
             disabled={loading}
+            aria-invalid={Boolean(errors.currentCycleUsedHours)}
+            aria-describedby="currentCycleUsedHours-hint"
           />
           <span className="trip-form__cycle-unit">hrs</span>
         </div>
+        <p className="trip-form__field-hint" id="currentCycleUsedHours-hint">
+          Hours already on duty in the 70-hour / 8-day cycle. Must be under {MAX_CYCLE_HOURS}.
+        </p>
         {errors.currentCycleUsedHours && (
           <p className="trip-form__field-error" role="alert">
             {errors.currentCycleUsedHours}

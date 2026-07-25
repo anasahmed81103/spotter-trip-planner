@@ -29,9 +29,21 @@ export async function postJson<TResponse>(path: string, body: unknown): Promise<
 
 async function extractErrorMessage(response: Response): Promise<string> {
   try {
-    const data = (await response.json()) as { detail?: unknown };
+    const data = (await response.json()) as Record<string, unknown>;
+
     if (typeof data.detail === "string" && data.detail.length > 0) {
       return data.detail;
+    }
+
+    // DRF reports field validation failures as { field: ["message", ...] }.
+    // Surfacing those keeps the user's actual mistake visible instead of a
+    // bare status code.
+    const fieldMessages = Object.values(data)
+      .flatMap((value) => (Array.isArray(value) ? value : [value]))
+      .filter((value): value is string => typeof value === "string" && value.length > 0);
+
+    if (fieldMessages.length > 0) {
+      return fieldMessages.join(" ");
     }
   } catch {
     // Response body wasn't valid JSON; fall back to the generic message below.
