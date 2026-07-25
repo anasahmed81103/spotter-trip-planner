@@ -12,11 +12,24 @@ import { RouteMap } from "../components/RouteMap";
 import { RouteSummaryCard } from "../components/RouteSummaryCard";
 import { DailyLogList } from "../components/DailyLogList";
 import { ErrorBanner } from "../components/ErrorBanner";
+import { formatTripCountries } from "../utils/formatTripCountries";
+import { formatTimezoneName } from "../utils/formatTimezoneName";
 import "./TripPlannerPage.css";
 
 export function TripPlannerPage() {
   const { tripRequest, setTripRequest, tripPlan, loading, error, submitTrip } = useTripPlanner();
   const hasPlan = Boolean(tripPlan);
+  const tripCountries = formatTripCountries([
+    tripRequest.currentLocation,
+    tripRequest.pickupLocation,
+    tripRequest.dropoffLocation,
+  ]);
+  const dayCount = tripPlan?.dailyLogs.length ?? 0;
+  const dayLabel = `${dayCount} day${dayCount === 1 ? "" : "s"}`;
+  const logsMeta = tripCountries ? `${tripCountries}, ${dayLabel}` : dayLabel;
+  const timezoneLabel = tripPlan
+    ? formatTimezoneName(tripPlan.route.originTimezone)
+    : null;
 
   return (
     <div className={`trip-planner${hasPlan ? " trip-planner--results" : ""}`}>
@@ -70,11 +83,19 @@ export function TripPlannerPage() {
 
               <section className="trip-planner__logs" aria-label="Daily log sheets">
                 <div className="trip-planner__logs-header">
-                  <h2>Daily logs</h2>
-                  <p>
-                    {tripPlan.route.originTimezone},{" "}
-                    {tripPlan.dailyLogs.length} day{tripPlan.dailyLogs.length === 1 ? "" : "s"}
-                  </p>
+                  <div className="trip-planner__logs-header-row">
+                    <h2>Daily logs</h2>
+                    <p className="trip-planner__logs-meta">{logsMeta}</p>
+                  </div>
+                  {timezoneLabel && (
+                    <p className="trip-planner__logs-timezone">
+                      Timezone considered: {timezoneLabel}{" "}
+                      <span>
+                        (all times are measured with respect to the starting location of the
+                        driver)
+                      </span>
+                    </p>
+                  )}
                 </div>
                 <DailyLogList dailyLogs={tripPlan.dailyLogs} />
               </section>

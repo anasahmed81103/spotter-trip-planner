@@ -9,7 +9,7 @@
 import { useEffect, useMemo } from "react";
 import type { LatLngBoundsExpression, LatLngTuple } from "leaflet";
 import L from "leaflet";
-import { MapContainer, Marker, Polyline, Popup, TileLayer, useMap } from "react-leaflet";
+import { MapContainer, Marker, Polyline, Popup, TileLayer, useMap, ZoomControl } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import type { RouteInfo } from "../types/trip";
 import "./RouteMap.css";
@@ -95,7 +95,7 @@ export function RouteMap({ route, loading = false }: RouteMapProps) {
         zoom={DEFAULT_ZOOM}
         className="route-map__container"
         scrollWheelZoom
-        zoomControl
+        zoomControl={false}
       >
         <TileLayer
           url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
@@ -104,6 +104,8 @@ export function RouteMap({ route, loading = false }: RouteMapProps) {
           maxZoom={19}
         />
 
+        {/* Top-right keeps zoom clear of the fixed brand chip (top-left). */}
+        <ZoomControl position="topright" />
         <InvalidateOnResize />
         {bounds && <FitToBounds bounds={bounds} />}
 

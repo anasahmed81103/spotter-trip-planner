@@ -175,6 +175,12 @@
 
 .trip-planner__logs-header {
   display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.trip-planner__logs-header-row {
+  display: flex;
   align-items: baseline;
   justify-content: space-between;
   gap: var(--space-md);
@@ -186,10 +192,22 @@
   letter-spacing: -0.02em;
 }
 
-.trip-planner__logs-header p {
+.trip-planner__logs-meta {
   font-family: var(--font-mono);
   font-size: 0.75rem;
   color: var(--color-ink-muted);
+  margin: 0;
+}
+
+.trip-planner__logs-timezone {
+  margin: 0;
+  font-size: 0.72rem;
+  line-height: 1.45;
+  color: var(--color-ink-faint);
+}
+
+.trip-planner__logs-timezone span {
+  color: var(--color-ink-faint);
 }
 
 /* Logs inside the narrow panel need to breathe */
