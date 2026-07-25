@@ -1,0 +1,111 @@
+/* Location autocomplete dropdown, styled to match the dark trip form. */
+
+.location-autocomplete {
+  position: relative;
+  width: 100%;
+}
+
+.location-autocomplete__control {
+  position: relative;
+}
+
+.location-autocomplete__control input {
+  width: 100%;
+  padding: 11px 40px 11px 14px;
+  font-size: 0.98rem;
+  font-weight: 500;
+  color: var(--color-ink);
+  background-color: rgba(232, 237, 244, 0.04);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  transition:
+    border-color var(--transition-fast),
+    background-color var(--transition-fast),
+    box-shadow var(--transition-fast);
+}
+
+.location-autocomplete__control input::placeholder {
+  color: var(--color-ink-faint);
+  font-weight: 400;
+}
+
+.location-autocomplete__control input:hover:not(:disabled) {
+  border-color: rgba(47, 158, 143, 0.45);
+  background-color: rgba(232, 237, 244, 0.06);
+}
+
+.location-autocomplete__control input:focus-visible {
+  border-color: var(--color-accent);
+  background-color: rgba(47, 158, 143, 0.08);
+  box-shadow: 0 0 0 3px var(--color-accent-soft);
+  outline: none;
+}
+
+.location-autocomplete__control input:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.location-autocomplete__spinner {
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  display: inline-flex;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.location-autocomplete__list {
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  max-height: min(360px, 50dvh);
+  overflow-y: auto;
+  background: var(--color-surface-elevated);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-card);
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border-strong) transparent;
+}
+
+.location-autocomplete__list--portal {
+  position: fixed;
+  z-index: 120;
+}
+
+.location-autocomplete__group {
+  padding: 8px 12px 4px;
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-ink-faint);
+}
+
+.location-autocomplete__option,
+.location-autocomplete__status {
+  padding: 10px 12px;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  line-height: 1.35;
+}
+
+.location-autocomplete__option {
+  color: var(--color-ink);
+  cursor: pointer;
+}
+
+.location-autocomplete__option--active,
+.location-autocomplete__option:hover {
+  background: var(--color-accent-soft);
+  color: var(--color-ink);
+}
+
+.location-autocomplete__status {
+  color: var(--color-ink-muted);
+}
+
+.location-autocomplete__status--error {
+  color: var(--color-danger);
+}

@@ -2,13 +2,19 @@
  * Collects the four inputs needed to plan a trip as controlled inputs
  * bound to `tripRequest`, and calls `submitTrip()` once the request
  * passes validation.
+ *
+ * Location fields use LocationAutocomplete. Selected suggestions retain
+ * coordinates in a local map for future routing optimizations, while the
+ * plan-trip payload continues to send display-name strings only.
  */
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { ChangeEvent, FormEvent } from "react";
+import type { LocationSuggestion } from "../types/location";
 import type { TripRequest } from "../types/trip";
 import { Button } from "./Button";
 import { LoadingSpinner } from "./LoadingSpinner";
+import { LocationAutocomplete } from "./LocationAutocomplete";
 import "./TripForm.css";
 
 interface TripFormProps {
@@ -51,13 +57,23 @@ function validate(tripRequest: TripRequest): ValidationErrors {
 
 export function TripForm({ tripRequest, setTripRequest, submitTrip, loading }: TripFormProps) {
   const [errors, setErrors] = useState<ValidationErrors>({});
+  // Retains lat/lng for each chosen suggestion without changing the API contract.
+  const selectedLocationsRef = useRef<Partial<Record<TextField, LocationSuggestion>>>({});
 
-  function handleTextChange(field: TextField) {
-    return (event: ChangeEvent<HTMLInputElement>) => {
-      const { value } = event.target;
-      setTripRequest((previous) => ({ ...previous, [field]: value }));
-      setErrors((previous) => ({ ...previous, [field]: undefined }));
-    };
+  function handleLocationInputChange(field: TextField, value: string) {
+    const selected = selectedLocationsRef.current[field];
+    if (selected && selected.displayName !== value) {
+      delete selectedLocationsRef.current[field];
+    }
+
+    setTripRequest((previous) => ({ ...previous, [field]: value }));
+    setErrors((previous) => ({ ...previous, [field]: undefined }));
+  }
+
+  function handleLocationSelect(field: TextField, location: LocationSuggestion) {
+    selectedLocationsRef.current[field] = location;
+    setTripRequest((previous) => ({ ...previous, [field]: location.displayName }));
+    setErrors((previous) => ({ ...previous, [field]: undefined }));
   }
 
   function handleCycleHoursChange(event: ChangeEvent<HTMLInputElement>) {
@@ -89,15 +105,14 @@ export function TripForm({ tripRequest, setTripRequest, submitTrip, loading }: T
           <span className="trip-form__stop-index" aria-hidden="true" />
           <div className="trip-form__field-body">
             <label htmlFor="currentLocation">Current location</label>
-            <input
+            <LocationAutocomplete
               id="currentLocation"
-              name="currentLocation"
-              type="text"
               value={tripRequest.currentLocation}
-              onChange={handleTextChange("currentLocation")}
+              onChange={(value) => handleLocationInputChange("currentLocation", value)}
+              onSelect={(location) => handleLocationSelect("currentLocation", location)}
               placeholder="Dallas, TX"
-              autoComplete="off"
               disabled={loading}
+              aria-invalid={Boolean(errors.currentLocation)}
             />
             {errors.currentLocation && (
               <p className="trip-form__field-error" role="alert">
@@ -111,15 +126,14 @@ export function TripForm({ tripRequest, setTripRequest, submitTrip, loading }: T
           <span className="trip-form__stop-index" aria-hidden="true" />
           <div className="trip-form__field-body">
             <label htmlFor="pickupLocation">Pickup</label>
-            <input
+            <LocationAutocomplete
               id="pickupLocation"
-              name="pickupLocation"
-              type="text"
               value={tripRequest.pickupLocation}
-              onChange={handleTextChange("pickupLocation")}
+              onChange={(value) => handleLocationInputChange("pickupLocation", value)}
+              onSelect={(location) => handleLocationSelect("pickupLocation", location)}
               placeholder="Fort Worth, TX"
-              autoComplete="off"
               disabled={loading}
+              aria-invalid={Boolean(errors.pickupLocation)}
             />
             {errors.pickupLocation && (
               <p className="trip-form__field-error" role="alert">
@@ -133,15 +147,14 @@ export function TripForm({ tripRequest, setTripRequest, submitTrip, loading }: T
           <span className="trip-form__stop-index trip-form__stop-index--end" aria-hidden="true" />
           <div className="trip-form__field-body">
             <label htmlFor="dropoffLocation">Dropoff</label>
-            <input
+            <LocationAutocomplete
               id="dropoffLocation"
-              name="dropoffLocation"
-              type="text"
               value={tripRequest.dropoffLocation}
-              onChange={handleTextChange("dropoffLocation")}
+              onChange={(value) => handleLocationInputChange("dropoffLocation", value)}
+              onSelect={(location) => handleLocationSelect("dropoffLocation", location)}
               placeholder="Denver, CO"
-              autoComplete="off"
               disabled={loading}
+              aria-invalid={Boolean(errors.dropoffLocation)}
             />
             {errors.dropoffLocation && (
               <p className="trip-form__field-error" role="alert">

@@ -12,7 +12,7 @@ from zoneinfo import ZoneInfo
 
 from django.test import SimpleTestCase
 
-from scheduler.domain import RouteInfo, TripRequest
+from scheduler.domain import RouteInfo, TripRequest, Waypoints
 from scheduler.services.constants import (
     MAX_CYCLE_HOURS,
     MAX_DRIVING_HOURS_PER_DAY,
@@ -35,6 +35,11 @@ def build_route(distance_miles: float, duration_hours: float) -> RouteInfo:
         duration_hours=duration_hours,
         geometry=[(32.7767, -96.7970), (39.7392, -104.9903)],
         origin_timezone="America/Chicago",
+        waypoints=Waypoints(
+            current=(32.7767, -96.7970),
+            pickup=(32.7555, -97.3308),
+            dropoff=(39.7392, -104.9903),
+        ),
     )
 
 

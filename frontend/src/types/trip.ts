@@ -22,11 +22,18 @@ export interface TripRequest {
   currentCycleUsedHours: number;
 }
 
+export interface Waypoints {
+  current: [number, number];
+  pickup: [number, number];
+  dropoff: [number, number];
+}
+
 export interface RouteInfo {
   distanceMiles: number;
   durationHours: number;
   geometry: [number, number][];
   originTimezone: string;
+  waypoints: Waypoints;
 }
 
 export interface ScheduleEvent {

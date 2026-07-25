@@ -25,13 +25,30 @@ class TripRequest:
 
 
 @dataclass
+class Waypoints:
+    """
+    The geocoded (latitude, longitude) of each trip stop.
+
+    These are the authoritative marker positions. The route geometry is
+    only the continuous driving polyline and does not record which of its
+    points correspond to pickup, so the map must use these instead of
+    approximating pickup from the polyline's midpoint.
+    """
+
+    current: Tuple[float, float]
+    pickup: Tuple[float, float]
+    dropoff: Tuple[float, float]
+
+
+@dataclass
 class RouteInfo:
-    """Distance, duration, map geometry, and origin timezone for the route."""
+    """Distance, duration, geometry, waypoints, and origin timezone for the route."""
 
     distance_miles: float
     duration_hours: float
     geometry: List[Tuple[float, float]]
     origin_timezone: str
+    waypoints: Waypoints
 
 
 @dataclass

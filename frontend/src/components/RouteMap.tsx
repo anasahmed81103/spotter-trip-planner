@@ -68,7 +68,10 @@ function InvalidateOnResize() {
 }
 
 export function RouteMap({ route, loading = false }: RouteMapProps) {
-  const positions = (route?.geometry ?? []) as LatLngTuple[];
+  const positions = useMemo<LatLngTuple[]>(
+    () => (route?.geometry ?? []) as LatLngTuple[],
+    [route?.geometry],
+  );
   const hasRoute = positions.length > 0;
 
   const bounds = useMemo<LatLngBoundsExpression | null>(() => {
@@ -78,10 +81,12 @@ export function RouteMap({ route, loading = false }: RouteMapProps) {
     return positions;
   }, [hasRoute, positions]);
 
-  const currentPosition = hasRoute ? positions[0] : null;
-  const dropoffPosition = hasRoute ? positions[positions.length - 1] : null;
-  // Geometry is the continuous driving polyline only - midpoint approximates pickup.
-  const pickupPosition = hasRoute ? positions[Math.floor((positions.length - 1) / 2)] : null;
+  // Markers use the geocoded waypoint coordinates from the API, not the
+  // route polyline. The polyline has no notion of which point is pickup,
+  // so deriving pickup from its midpoint placed the marker incorrectly.
+  const currentPosition = route ? (route.waypoints.current as LatLngTuple) : null;
+  const pickupPosition = route ? (route.waypoints.pickup as LatLngTuple) : null;
+  const dropoffPosition = route ? (route.waypoints.dropoff as LatLngTuple) : null;
 
   return (
     <div className={`route-map${loading ? " route-map--loading" : ""}`} aria-label="Route map">

@@ -71,6 +71,12 @@
   flex-direction: column;
   gap: 6px;
   min-width: 0;
+  /* Let the autocomplete list escape the scrollable dock panel cleanly. */
+  overflow: visible;
+}
+
+.trip-form__field--stop {
+  overflow: visible;
 }
 
 .trip-form__field label {

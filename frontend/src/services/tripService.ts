@@ -51,6 +51,11 @@ interface RouteInfoApiResponse {
   duration_hours: number;
   geometry: [number, number][];
   origin_timezone: string;
+  waypoints: {
+    current: [number, number];
+    pickup: [number, number];
+    dropoff: [number, number];
+  };
 }
 
 interface ScheduleEventApiResponse {
@@ -89,6 +94,11 @@ function toRouteInfo(route: RouteInfoApiResponse): RouteInfo {
     durationHours: route.duration_hours,
     geometry: route.geometry,
     originTimezone: route.origin_timezone,
+    waypoints: {
+      current: route.waypoints.current,
+      pickup: route.waypoints.pickup,
+      dropoff: route.waypoints.dropoff,
+    },
   };
 }
 

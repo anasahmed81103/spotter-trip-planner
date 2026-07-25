@@ -14,7 +14,7 @@ from typing import List, Tuple
 import requests
 from timezonefinder import TimezoneFinder
 
-from scheduler.domain import RouteInfo
+from scheduler.domain import RouteInfo, Waypoints
 
 # Public OSM-community-run servers, free to use for development. A
 # production deployment would point these at self-hosted or paid
@@ -80,6 +80,13 @@ class RouteService:
             # here rather than leaking OSRM's convention to the frontend.
             geometry=[(latitude, longitude) for longitude, latitude in route["geometry"]["coordinates"]],
             origin_timezone=origin_timezone,
+            # The geocoded stop coordinates are the authoritative marker
+            # positions; the map must not infer pickup from the polyline.
+            waypoints=Waypoints(
+                current=current_coordinates,
+                pickup=pickup_coordinates,
+                dropoff=dropoff_coordinates,
+            ),
         )
 
     def _find_timezone(self, coordinates: Tuple[float, float]) -> str:
