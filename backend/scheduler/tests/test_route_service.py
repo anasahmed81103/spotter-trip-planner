@@ -5,6 +5,7 @@ from unittest.mock import patch
 from django.test import SimpleTestCase
 
 from scheduler.services.route_service import RouteService, RoutingError, TimezoneLookupError
+from scheduler.services.constants import TRUCK_PLANNING_SPEED_MPH
 
 _DALLAS = (32.7767, -96.7970)
 _FORT_WORTH = (32.7555, -97.3308)
@@ -46,7 +47,9 @@ class RouteServiceLegTests(SimpleTestCase):
         self.service = RouteService()
 
     def test_three_stop_route_splits_into_deadhead_and_loaded_legs(self):
-        route = osrm_route([(30 * _METERS_PER_MILE, 3600), (600 * _METERS_PER_MILE, 36000)])
+        # OSRM durations are intentionally nonsense here; the service must
+        # ignore them and derive hours from distance / truck planning speed.
+        route = osrm_route([(30 * _METERS_PER_MILE, 1), (600 * _METERS_PER_MILE, 1)])
 
         with patch.object(RouteService, "_request_route", return_value=route):
             to_pickup, to_dropoff, geometry = self.service._build_legs_and_geometry(
@@ -54,14 +57,14 @@ class RouteServiceLegTests(SimpleTestCase):
             )
 
         self.assertAlmostEqual(to_pickup.distance_miles, 30, places=4)
-        self.assertAlmostEqual(to_pickup.duration_hours, 1, places=6)
+        self.assertAlmostEqual(to_pickup.duration_hours, 30 / TRUCK_PLANNING_SPEED_MPH, places=6)
         self.assertAlmostEqual(to_dropoff.distance_miles, 600, places=4)
-        self.assertAlmostEqual(to_dropoff.duration_hours, 10, places=6)
+        self.assertAlmostEqual(to_dropoff.duration_hours, 600 / TRUCK_PLANNING_SPEED_MPH, places=6)
         # Geometry is flipped to Leaflet's (latitude, longitude) order.
         self.assertEqual(geometry[0], (32.7767, -96.7970))
 
     def test_identical_current_and_pickup_produce_a_zero_deadhead_leg(self):
-        route = osrm_route([(600 * _METERS_PER_MILE, 36000)])
+        route = osrm_route([(600 * _METERS_PER_MILE, 1)])
 
         with patch.object(RouteService, "_request_route", return_value=route) as request_route:
             to_pickup, to_dropoff, _ = self.service._build_legs_and_geometry(
@@ -70,9 +73,14 @@ class RouteServiceLegTests(SimpleTestCase):
 
         self.assertEqual(to_pickup.distance_miles, 0.0)
         self.assertEqual(to_pickup.duration_hours, 0.0)
-        self.assertAlmostEqual(to_dropoff.duration_hours, 10, places=6)
+        self.assertAlmostEqual(to_dropoff.duration_hours, 600 / TRUCK_PLANNING_SPEED_MPH, places=6)
         # Only pickup -> dropoff is routed, so no wasted zero-length leg.
         self.assertEqual(request_route.call_args.args[0], [_DALLAS, _DENVER])
+
+    def test_drive_time_uses_fixed_truck_planning_speed(self):
+        self.assertEqual(TRUCK_PLANNING_SPEED_MPH, 55)
+        self.assertAlmostEqual(self.service._hours_at_truck_speed(110), 2.0)
+        self.assertEqual(self.service._hours_at_truck_speed(0), 0.0)
 
     def test_unexpected_leg_count_is_rejected(self):
         route = osrm_route([(600 * _METERS_PER_MILE, 36000)])

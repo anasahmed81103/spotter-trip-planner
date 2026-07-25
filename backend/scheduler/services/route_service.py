@@ -15,6 +15,7 @@ import requests
 from timezonefinder import TimezoneFinder
 
 from scheduler.domain import RouteInfo, RouteLeg, Waypoints
+from scheduler.services.constants import TRUCK_PLANNING_SPEED_MPH
 
 # Public OSM-community-run servers, free to use for development. A
 # production deployment would point these at self-hosted or paid
@@ -52,7 +53,6 @@ class RouteService:
     _REQUEST_TIMEOUT_SECONDS = 10
 
     _METERS_PER_MILE = 1609.344
-    _SECONDS_PER_HOUR = 3600
 
     def __init__(self) -> None:
         # Read once per instance rather than per-request, and read from the
@@ -66,9 +66,10 @@ class RouteService:
         Geocode the three locations and fetch the driving route that
         visits them in order (current -> pickup -> dropoff).
 
-        OSRM's per-leg distances/durations become to_pickup / to_dropoff so
-        the scheduler can log deadhead driving before loading, not only the
-        loaded leg after pickup.
+        OSRM supplies the road distance and polyline. Drive time is not taken
+        from OSRM's car-profile ETA; each leg's hours are distance divided by
+        TRUCK_PLANNING_SPEED_MPH so schedules use a CMV speed that is legal
+        in every U.S. state.
         """
         current_coordinates = self._geocode_location(current_location)
         pickup_coordinates = self._geocode_location(pickup_location)
@@ -126,11 +127,23 @@ class RouteService:
         return to_pickup, to_dropoff, geometry
 
     def _leg_from_osrm(self, leg: dict) -> RouteLeg:
-        """Convert one OSRM leg (meters / seconds) into miles / hours."""
+        """
+        Keep OSRM's road distance, then convert to hours at the fixed CMV
+        planning speed. OSRM's own duration is ignored because it reflects
+        a car profile, not a truck-legal average.
+        """
+        distance_miles = self._convert_distance_to_miles(leg["distance"])
         return RouteLeg(
-            distance_miles=self._convert_distance_to_miles(leg["distance"]),
-            duration_hours=self._convert_duration_to_hours(leg["duration"]),
+            distance_miles=distance_miles,
+            duration_hours=self._hours_at_truck_speed(distance_miles),
         )
+
+    @staticmethod
+    def _hours_at_truck_speed(distance_miles: float) -> float:
+        """Drive time for `distance_miles` at TRUCK_PLANNING_SPEED_MPH."""
+        if distance_miles <= 0:
+            return 0.0
+        return distance_miles / TRUCK_PLANNING_SPEED_MPH
 
     def _geometry_from_osrm(self, route: dict) -> List[Tuple[float, float]]:
         """
@@ -240,7 +253,3 @@ class RouteService:
     def _convert_distance_to_miles(self, meters: float) -> float:
         """OSRM reports distance in meters; the app displays and schedules in miles."""
         return meters / self._METERS_PER_MILE
-
-    def _convert_duration_to_hours(self, seconds: float) -> float:
-        """OSRM reports duration in seconds; the app displays and schedules in hours."""
-        return seconds / self._SECONDS_PER_HOUR

@@ -19,3 +19,8 @@ CYCLE_RESTART_HOURS = 34
 FUEL_STOP_INTERVAL_MILES = 1000
 FUEL_STOP_DURATION_HOURS = 0.5
 PICKUP_DROPOFF_DURATION_HOURS = 1
+# Conservative CMV planning speed used for all drive-time estimates.
+# California caps most trucks at 55 mph statewide, so this figure is legal
+# in every U.S. state; posted limits elsewhere may be higher, but using the
+# national floor keeps schedules conservative and consistent.
+TRUCK_PLANNING_SPEED_MPH = 55
