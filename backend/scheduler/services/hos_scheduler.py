@@ -1,12 +1,17 @@
 """
 HOSScheduler applies FMCSA Hours-of-Service rules to a planned trip.
 
-Given the route's distance and duration, and how many hours are already
-used in the driver's current cycle, this engine works out the ordered
-sequence of duty-status periods (driving, required breaks, off-duty
-resets, fuel stops, pickup/dropoff time) needed to legally complete the
-trip. It has no knowledge of Django, HTTP, or how its output will be
-displayed - it only produces ScheduleEvent objects.
+Given the route's two driving legs (current→pickup and pickup→dropoff) and
+how many hours are already used in the driver's current cycle, this engine
+works out the ordered sequence of duty-status periods (driving, required
+breaks, off-duty resets, fuel stops, pickup/dropoff time) needed to legally
+complete the trip. It has no knowledge of Django, HTTP, or how its output
+will be displayed - it only produces ScheduleEvent objects.
+
+The schedule begins at the driver's current location, so the deadhead drive
+to pickup is logged and governed by HOS just like the loaded leg. Every
+clock (cycle, driving day, 14-hour window, break, fuel mileage) runs
+continuously across both legs; nothing resets at pickup.
 
 The rules enforced here are:
   - 11 hours of driving per duty day
@@ -15,6 +20,7 @@ The rules enforced here are:
   - 10 consecutive hours off duty to reset the driving day
   - 70 hours of on-duty time per 8-day cycle, cleared by a 34-hour restart
   - a fuel stop every 1000 miles
+  - 1 hour on duty (not driving) at pickup and at dropoff
 """
 
 from dataclasses import dataclass
@@ -23,7 +29,7 @@ from enum import Enum
 from typing import Callable, List, Optional
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from scheduler.domain import RouteInfo, ScheduleEvent, TripRequest
+from scheduler.domain import RouteInfo, RouteLeg, ScheduleEvent, TripRequest
 from scheduler.services.constants import (
     BREAK_DURATION_HOURS,
     CYCLE_RESTART_HOURS,
@@ -63,6 +69,10 @@ class _SchedulingState:
     an implementation detail of how the engine builds a schedule (a
     running clock, hours consumed so far, events collected so far), not a
     concept the rest of the application needs to know about.
+
+    remaining_* track only the leg currently being driven; the HOS clocks
+    (cycle, driving day, window, break, fuel mileage) persist across both
+    legs because FMCSA limits do not reset at pickup.
     """
 
     trip_request: TripRequest
@@ -70,6 +80,8 @@ class _SchedulingState:
     current_time: datetime
     remaining_distance_miles: float
     remaining_duration_hours: float
+    destination_label: str
+    leg_speed_mph: float
     cycle_hours_used: float
     driving_hours_today: float
     on_duty_window_hours_used: float
@@ -99,15 +111,20 @@ class HOSScheduler:
 
             validate inputs
                 -> initialize scheduling state
+                -> drive the deadhead leg to pickup (if any)
                 -> add pickup event
-                -> generate driving schedule
+                -> drive the loaded leg to dropoff
                 -> add dropoff event
                 -> finalize and return schedule
+
+        The log therefore starts at the driver's current location, not at
+        pickup, and HOS limits apply continuously across both legs.
         """
         self._validate_inputs(trip_request, route_info)
         state = self._initialize_state(trip_request, route_info)
+        self._drive_leg(state, route_info.to_pickup, trip_request.pickup_location)
         self._add_pickup(state)
-        self._generate_driving_schedule(state)
+        self._drive_leg(state, route_info.to_dropoff, trip_request.dropoff_location)
         self._add_dropoff(state)
         return self._finalize_schedule(state)
 
@@ -133,6 +150,23 @@ class HOSScheduler:
 
         if route_info.duration_hours <= 0:
             raise ValueError(f"Route duration must be greater than zero, got {route_info.duration_hours} hours.")
+
+        for label, leg in (("to_pickup", route_info.to_pickup), ("to_dropoff", route_info.to_dropoff)):
+            if leg.distance_miles < 0 or leg.duration_hours < 0:
+                raise ValueError(f"Route leg '{label}' cannot have negative distance or duration.")
+
+        # A leg with distance but no time (or vice versa) cannot be driven
+        # at any coherent speed, so reject it rather than guessing.
+        for label, leg in (("to_pickup", route_info.to_pickup), ("to_dropoff", route_info.to_dropoff)):
+            has_distance = leg.distance_miles > 0
+            has_duration = leg.duration_hours > 0
+            if has_distance != has_duration:
+                raise ValueError(
+                    f"Route leg '{label}' must have both distance and duration, or neither."
+                )
+
+        if route_info.to_dropoff.duration_hours <= 0:
+            raise ValueError("The pickup-to-dropoff leg must have a duration greater than zero.")
 
         if not route_info.geometry:
             raise ValueError("Route geometry is empty; cannot schedule a trip with no route.")
@@ -165,8 +199,11 @@ class HOSScheduler:
             trip_request=trip_request,
             route_info=route_info,
             current_time=self._now_provider(origin_timezone),
-            remaining_distance_miles=route_info.distance_miles,
-            remaining_duration_hours=route_info.duration_hours,
+            # Legs are loaded one at a time by _drive_leg().
+            remaining_distance_miles=0.0,
+            remaining_duration_hours=0.0,
+            destination_label=trip_request.pickup_location,
+            leg_speed_mph=route_info.distance_miles / route_info.duration_hours,
             cycle_hours_used=trip_request.current_cycle_used_hours,
             driving_hours_today=0.0,
             on_duty_window_hours_used=0.0,
@@ -175,11 +212,30 @@ class HOSScheduler:
             events=[],
         )
 
+    def _drive_leg(self, state: _SchedulingState, leg: RouteLeg, destination_label: str) -> None:
+        """
+        Drive one leg of the trip to completion, inserting whatever breaks,
+        resets, restarts, and fuel stops the HOS rules require along the way.
+
+        A zero-length leg (current location is already the pickup) is
+        skipped so no empty driving event is logged.
+        """
+        if leg.duration_hours <= _TOLERANCE_HOURS:
+            return
+
+        state.remaining_distance_miles = leg.distance_miles
+        state.remaining_duration_hours = leg.duration_hours
+        state.destination_label = destination_label
+        # Each leg keeps its own average speed so the 1000-mile fuel rule
+        # counts the miles actually covered on that leg.
+        state.leg_speed_mph = leg.distance_miles / leg.duration_hours
+
+        self._generate_driving_schedule(state)
+
     def _add_pickup(self, state: _SchedulingState) -> None:
         """
         Record the on-duty (not driving) period spent at the pickup
-        location before driving begins, and advance the state's clock
-        past it.
+        location, and advance the state's clock past it.
 
         Pickup always takes a fixed PICKUP_DROPOFF_DURATION_HOURS and is
         logged as On Duty (Not Driving) - it does not touch the remaining
@@ -196,14 +252,14 @@ class HOSScheduler:
 
     def _generate_driving_schedule(self, state: _SchedulingState) -> None:
         """
-        The core of the engine: turn the remaining drive time into a
-        sequence of driving / break / off-duty-reset / fuel-stop events
-        until the driver reaches the dropoff location.
+        The core of the engine: turn the current leg's remaining drive time
+        into a sequence of driving / break / off-duty-reset / fuel-stop
+        events until the driver reaches that leg's destination.
 
         Each pass either inserts the stop that is currently blocking the
         driver, or drives forward until the next limit is reached. Both
         branches always advance the clock, so the loop terminates once
-        the remaining trip duration is exhausted.
+        the remaining leg duration is exhausted.
         """
         while state.remaining_duration_hours > _TOLERANCE_HOURS:
             blocking_stop = self._next_required_stop(state)
@@ -268,7 +324,7 @@ class HOSScheduler:
             state,
             status=DutyStatus.DRIVING,
             hours=driving_hours,
-            location=state.trip_request.dropoff_location,
+            location=state.destination_label,
             remark="Driving",
         )
 
@@ -305,11 +361,12 @@ class HOSScheduler:
 
     def _average_speed_mph(self, state: _SchedulingState) -> float:
         """
-        The route's average speed, used to convert between the mileage the
-        fuel rule counts and the hours every other rule counts. Both
-        inputs are guaranteed positive by _validate_inputs().
+        The current leg's average speed, used to convert between the mileage
+        the fuel rule counts and the hours every other rule counts. Every
+        leg that gets driven is guaranteed a positive distance and duration
+        by _validate_inputs().
         """
-        return state.route_info.distance_miles / state.route_info.duration_hours
+        return state.leg_speed_mph
 
     def _take_thirty_minute_break(self, state: _SchedulingState) -> None:
         """

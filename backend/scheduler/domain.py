@@ -41,14 +41,30 @@ class Waypoints:
 
 
 @dataclass
+class RouteLeg:
+    """One driving segment of the trip (current→pickup or pickup→dropoff)."""
+
+    distance_miles: float
+    duration_hours: float
+
+
+@dataclass
 class RouteInfo:
-    """Distance, duration, geometry, waypoints, and origin timezone for the route."""
+    """
+    Full route plus the two schedulable driving legs.
+
+    Totals (distance_miles / duration_hours) cover the whole map polyline.
+    The legs split that drive into deadhead-to-pickup and loaded-to-dropoff
+    so HOSScheduler can apply rules on both segments in order.
+    """
 
     distance_miles: float
     duration_hours: float
     geometry: List[Tuple[float, float]]
     origin_timezone: str
     waypoints: Waypoints
+    to_pickup: RouteLeg
+    to_dropoff: RouteLeg
 
 
 @dataclass

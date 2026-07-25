@@ -14,7 +14,7 @@ from typing import List, Tuple
 import requests
 from timezonefinder import TimezoneFinder
 
-from scheduler.domain import RouteInfo, Waypoints
+from scheduler.domain import RouteInfo, RouteLeg, Waypoints
 
 # Public OSM-community-run servers, free to use for development. A
 # production deployment would point these at self-hosted or paid
@@ -22,6 +22,10 @@ from scheduler.domain import RouteInfo, Waypoints
 _DEFAULT_OSRM_BASE_URL = "https://router.project-osrm.org"
 _DEFAULT_NOMINATIM_BASE_URL = "https://nominatim.openstreetmap.org"
 _TIMEZONE_FINDER = TimezoneFinder(in_memory=True)
+
+# Coordinates closer than this are treated as the same stop so OSRM is
+# not asked for a zero-length current→pickup leg.
+_SAME_POINT_EPSILON_DEGREES = 1e-4
 
 
 class RouteServiceError(Exception):
@@ -62,31 +66,90 @@ class RouteService:
         Geocode the three locations and fetch the driving route that
         visits them in order (current -> pickup -> dropoff).
 
-        This is the only method the rest of the application should call -
-        everything else in this class is a private implementation detail.
+        OSRM's per-leg distances/durations become to_pickup / to_dropoff so
+        the scheduler can log deadhead driving before loading, not only the
+        loaded leg after pickup.
         """
         current_coordinates = self._geocode_location(current_location)
         pickup_coordinates = self._geocode_location(pickup_location)
         dropoff_coordinates = self._geocode_location(dropoff_location)
         origin_timezone = self._find_timezone(current_coordinates)
 
-        route = self._request_route([current_coordinates, pickup_coordinates, dropoff_coordinates])
+        to_pickup, to_dropoff, geometry = self._build_legs_and_geometry(
+            current_coordinates,
+            pickup_coordinates,
+            dropoff_coordinates,
+        )
 
         return RouteInfo(
-            distance_miles=self._convert_distance_to_miles(route["distance"]),
-            duration_hours=self._convert_duration_to_hours(route["duration"]),
-            # OSRM's GeoJSON geometry is (longitude, latitude); Leaflet
-            # expects (latitude, longitude), so the pair order is flipped
-            # here rather than leaking OSRM's convention to the frontend.
-            geometry=[(latitude, longitude) for longitude, latitude in route["geometry"]["coordinates"]],
+            distance_miles=to_pickup.distance_miles + to_dropoff.distance_miles,
+            duration_hours=to_pickup.duration_hours + to_dropoff.duration_hours,
+            geometry=geometry,
             origin_timezone=origin_timezone,
-            # The geocoded stop coordinates are the authoritative marker
-            # positions; the map must not infer pickup from the polyline.
             waypoints=Waypoints(
                 current=current_coordinates,
                 pickup=pickup_coordinates,
                 dropoff=dropoff_coordinates,
             ),
+            to_pickup=to_pickup,
+            to_dropoff=to_dropoff,
+        )
+
+    def _build_legs_and_geometry(
+        self,
+        current_coordinates: Tuple[float, float],
+        pickup_coordinates: Tuple[float, float],
+        dropoff_coordinates: Tuple[float, float],
+    ) -> Tuple[RouteLeg, RouteLeg, List[Tuple[float, float]]]:
+        """
+        Build the two driving legs and the continuous map polyline.
+
+        When current and pickup resolve to the same point, there is no
+        deadhead: to_pickup is zero and only pickup→dropoff is routed.
+        """
+        if self._coordinates_nearly_equal(current_coordinates, pickup_coordinates):
+            route = self._request_route([pickup_coordinates, dropoff_coordinates])
+            to_pickup = RouteLeg(distance_miles=0.0, duration_hours=0.0)
+            to_dropoff = self._leg_from_osrm(route["legs"][0])
+            geometry = self._geometry_from_osrm(route)
+            return to_pickup, to_dropoff, geometry
+
+        route = self._request_route([current_coordinates, pickup_coordinates, dropoff_coordinates])
+        if len(route.get("legs", [])) != 2:
+            raise RoutingError(
+                f"OSRM returned {len(route.get('legs', []))} legs for a three-stop trip; expected 2."
+            )
+
+        to_pickup = self._leg_from_osrm(route["legs"][0])
+        to_dropoff = self._leg_from_osrm(route["legs"][1])
+        geometry = self._geometry_from_osrm(route)
+        return to_pickup, to_dropoff, geometry
+
+    def _leg_from_osrm(self, leg: dict) -> RouteLeg:
+        """Convert one OSRM leg (meters / seconds) into miles / hours."""
+        return RouteLeg(
+            distance_miles=self._convert_distance_to_miles(leg["distance"]),
+            duration_hours=self._convert_duration_to_hours(leg["duration"]),
+        )
+
+    def _geometry_from_osrm(self, route: dict) -> List[Tuple[float, float]]:
+        """
+        Flip OSRM GeoJSON (longitude, latitude) pairs to Leaflet's
+        (latitude, longitude) order.
+        """
+        return [
+            (latitude, longitude)
+            for longitude, latitude in route["geometry"]["coordinates"]
+        ]
+
+    @staticmethod
+    def _coordinates_nearly_equal(
+        left: Tuple[float, float],
+        right: Tuple[float, float],
+    ) -> bool:
+        return (
+            abs(left[0] - right[0]) < _SAME_POINT_EPSILON_DEGREES
+            and abs(left[1] - right[1]) < _SAME_POINT_EPSILON_DEGREES
         )
 
     def _find_timezone(self, coordinates: Tuple[float, float]) -> str:

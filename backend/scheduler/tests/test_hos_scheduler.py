@@ -12,7 +12,7 @@ from zoneinfo import ZoneInfo
 
 from django.test import SimpleTestCase
 
-from scheduler.domain import RouteInfo, TripRequest, Waypoints
+from scheduler.domain import RouteInfo, RouteLeg, TripRequest, Waypoints
 from scheduler.services.constants import (
     MAX_CYCLE_HOURS,
     MAX_DRIVING_HOURS_PER_DAY,
@@ -28,11 +28,21 @@ from scheduler.services.hos_scheduler import HOSScheduler
 _TOLERANCE_HOURS = 1e-6
 
 
-def build_route(distance_miles: float, duration_hours: float) -> RouteInfo:
-    """A RouteInfo with the given distance and duration and a minimal two-point geometry."""
+def build_route(
+    distance_miles: float,
+    duration_hours: float,
+    deadhead_miles: float = 0.0,
+    deadhead_hours: float = 0.0,
+) -> RouteInfo:
+    """
+    A RouteInfo whose loaded (pickup→dropoff) leg is the given distance and
+    duration, optionally preceded by a deadhead (current→pickup) leg.
+
+    Totals cover both legs, matching what RouteService produces.
+    """
     return RouteInfo(
-        distance_miles=distance_miles,
-        duration_hours=duration_hours,
+        distance_miles=distance_miles + deadhead_miles,
+        duration_hours=duration_hours + deadhead_hours,
         geometry=[(32.7767, -96.7970), (39.7392, -104.9903)],
         origin_timezone="America/Chicago",
         waypoints=Waypoints(
@@ -40,6 +50,8 @@ def build_route(distance_miles: float, duration_hours: float) -> RouteInfo:
             pickup=(32.7555, -97.3308),
             dropoff=(39.7392, -104.9903),
         ),
+        to_pickup=RouteLeg(distance_miles=deadhead_miles, duration_hours=deadhead_hours),
+        to_dropoff=RouteLeg(distance_miles=distance_miles, duration_hours=duration_hours),
     )
 
 
@@ -81,6 +93,23 @@ class HOSSchedulerValidationTests(SimpleTestCase):
         with self.assertRaises(ValueError):
             self.scheduler.generate_trip_plan(build_request(), build_route(0, 5))
 
+    def test_rejects_zero_duration_loaded_leg(self):
+        with self.assertRaises(ValueError):
+            self.scheduler.generate_trip_plan(build_request(), build_route(300, 0))
+
+    def test_rejects_leg_with_distance_but_no_duration(self):
+        route = build_route(300, 5, deadhead_miles=40, deadhead_hours=0)
+
+        with self.assertRaises(ValueError):
+            self.scheduler.generate_trip_plan(build_request(), route)
+
+    def test_rejects_negative_leg(self):
+        route = build_route(300, 5)
+        route.to_pickup.distance_miles = -10
+
+        with self.assertRaises(ValueError):
+            self.scheduler.generate_trip_plan(build_request(), route)
+
     def test_rejects_empty_geometry(self):
         route = build_route(300, 5)
         route.geometry = []
@@ -109,6 +138,50 @@ class HOSSchedulerScheduleShapeTests(SimpleTestCase):
             [event.status for event in events],
             [DutyStatus.ON_DUTY, DutyStatus.DRIVING, DutyStatus.ON_DUTY],
         )
+
+    def test_trip_starts_by_driving_from_current_location_to_pickup(self):
+        events = self.scheduler.generate_trip_plan(
+            build_request(),
+            build_route(300, 5, deadhead_miles=60, deadhead_hours=1),
+        )
+
+        self.assertEqual(
+            [event.status for event in events],
+            [DutyStatus.DRIVING, DutyStatus.ON_DUTY, DutyStatus.DRIVING, DutyStatus.ON_DUTY],
+        )
+        # The deadhead leg is logged as driving toward the pickup location.
+        self.assertEqual(events[0].location, "Fort Worth, TX")
+        self.assertAlmostEqual(hours_between(events[0]), 1, delta=_TOLERANCE_HOURS)
+        self.assertEqual(events[1].remark, "Pickup")
+
+    def test_driving_hours_cover_both_legs(self):
+        events = self.scheduler.generate_trip_plan(
+            build_request(),
+            build_route(300, 5, deadhead_miles=120, deadhead_hours=2),
+        )
+
+        self.assertAlmostEqual(
+            total_hours(events, DutyStatus.DRIVING), 7, delta=_TOLERANCE_HOURS
+        )
+
+    def test_hos_clocks_carry_across_pickup(self):
+        # 7h deadhead + 1h pickup + 2h driving crosses the 8-hour driving
+        # threshold, so the break must appear on the loaded leg.
+        events = self.scheduler.generate_trip_plan(
+            build_request(),
+            build_route(180, 3, deadhead_miles=420, deadhead_hours=7),
+        )
+
+        statuses = [event.status for event in events]
+        self.assertIn(DutyStatus.BREAK, statuses)
+        # The break happens after pickup, proving driving hours were not
+        # reset by the pickup event.
+        self.assertGreater(statuses.index(DutyStatus.BREAK), statuses.index(DutyStatus.ON_DUTY))
+
+    def test_deadhead_leg_is_skipped_when_current_location_is_the_pickup(self):
+        events = self.scheduler.generate_trip_plan(build_request(), build_route(300, 5))
+
+        self.assertEqual(events[0].remark, "Pickup")
 
     def test_schedule_starts_at_current_time_in_origin_timezone(self):
         expected_start = datetime(2026, 7, 24, 12, 15, tzinfo=ZoneInfo("America/Chicago"))
@@ -156,6 +229,16 @@ class HOSSchedulerScheduleShapeTests(SimpleTestCase):
         self.assertEqual(events[-1].remark, "Dropoff")
         self.assertEqual(events[-1].status, DutyStatus.ON_DUTY)
         self.assertAlmostEqual(hours_between(events[-1]), PICKUP_DROPOFF_DURATION_HOURS)
+
+    def test_events_remain_contiguous_across_both_legs(self):
+        events = self.scheduler.generate_trip_plan(
+            build_request(),
+            build_route(2400, 40, deadhead_miles=300, deadhead_hours=5),
+        )
+
+        for earlier, later in zip(events, events[1:]):
+            self.assertLess(earlier.start_time, earlier.end_time)
+            self.assertEqual(earlier.end_time, later.start_time)
 
 
 class HOSSchedulerRuleTests(SimpleTestCase):
@@ -213,6 +296,61 @@ class HOSSchedulerRuleTests(SimpleTestCase):
         fuel_stops = [event for event in events if event.status == DutyStatus.FUEL]
 
         self.assertEqual(len(fuel_stops), 2)
+
+    def test_fuel_mileage_accumulates_across_both_legs(self):
+        # 600 deadhead miles + 600 loaded miles crosses 1000 miles once,
+        # which only happens if mileage is not reset at pickup.
+        events = self.scheduler.generate_trip_plan(
+            build_request(),
+            build_route(600, 10, deadhead_miles=600, deadhead_hours=10),
+        )
+        fuel_stops = [event for event in events if event.status == DutyStatus.FUEL]
+
+        self.assertEqual(len(fuel_stops), 1)
+
+    def test_rules_apply_on_the_deadhead_leg_before_pickup(self):
+        # A 14-hour deadhead cannot be driven in one duty day, so breaks and
+        # a reset must appear before the pickup event.
+        events = self.scheduler.generate_trip_plan(
+            build_request(),
+            build_route(120, 2, deadhead_miles=840, deadhead_hours=14),
+        )
+        pickup_index = next(
+            index for index, event in enumerate(events) if event.remark == "Pickup"
+        )
+        before_pickup = {event.status for event in events[:pickup_index]}
+
+        self.assertIn(DutyStatus.BREAK, before_pickup)
+        self.assertIn(DutyStatus.SLEEPER_BERTH, before_pickup)
+
+    def test_driving_never_exceeds_daily_limit_with_a_deadhead_leg(self):
+        events = self.scheduler.generate_trip_plan(
+            build_request(),
+            build_route(1800, 30, deadhead_miles=600, deadhead_hours=10),
+        )
+
+        driving_today = 0.0
+        for event in events:
+            if event.status == DutyStatus.DRIVING:
+                driving_today += hours_between(event)
+                self.assertLessEqual(driving_today, MAX_DRIVING_HOURS_PER_DAY + _TOLERANCE_HOURS)
+            elif event.status in (DutyStatus.SLEEPER_BERTH, DutyStatus.OFF_DUTY):
+                driving_today = 0.0
+
+    def test_on_duty_window_is_respected_with_a_deadhead_leg(self):
+        events = self.scheduler.generate_trip_plan(
+            build_request(),
+            build_route(1800, 30, deadhead_miles=600, deadhead_hours=10),
+        )
+
+        window_used = 0.0
+        for event in events:
+            if event.status in (DutyStatus.SLEEPER_BERTH, DutyStatus.OFF_DUTY):
+                window_used = 0.0
+                continue
+
+            window_used += hours_between(event)
+            self.assertLessEqual(window_used, MAX_ON_DUTY_WINDOW_HOURS + _TOLERANCE_HOURS)
 
     def test_short_trip_needs_no_fuel_stop(self):
         events = self.scheduler.generate_trip_plan(build_request(), build_route(300, 5))
