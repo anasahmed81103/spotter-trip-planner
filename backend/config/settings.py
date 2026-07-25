@@ -10,6 +10,7 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
+import os
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -23,16 +24,34 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
 
 
+def _env_flag(name: str, default: str = "False") -> bool:
+    """Parse a truthy environment flag (1/true/yes)."""
+    return os.environ.get(name, default).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _env_list(name: str, default: str) -> list[str]:
+    """Split a comma-separated env var into a trimmed non-empty list."""
+    raw_value = os.environ.get(name, default)
+    return [item.strip() for item in raw_value.split(",") if item.strip()]
+
+
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-ljvq9t(x*)^dm)0)v1=bba)=@m85uf$xie+d34h89i=eok5m%w'
+# Local fallback keeps `runserver` working without a .env entry. Production
+# hosts must set SECRET_KEY explicitly.
+SECRET_KEY = os.environ.get(
+    "SECRET_KEY",
+    "django-insecure-ljvq9t(x*)^dm)0)v1=bba)=@m85uf$xie+d34h89i=eok5m%w",
+)
 
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+# Default True so local development matches the previous behavior when no
+# DEBUG env var is set. Render/production must set DEBUG=False.
+DEBUG = _env_flag("DEBUG", "True")
 
-ALLOWED_HOSTS = []
+# Empty ALLOWED_HOSTS with DEBUG=True still allows localhost in Django.
+# Production should set this to the Render hostname (or temporarily *).
+ALLOWED_HOSTS = _env_list("ALLOWED_HOSTS", "localhost,127.0.0.1")
 
 
 # Application definition
@@ -62,9 +81,13 @@ MIDDLEWARE = [
 
 # The frontend runs on Vite's default dev port; the app is stateless so no
 # cookies/credentials need to cross the boundary, just JSON requests.
-CORS_ALLOWED_ORIGINS = [
-    'http://localhost:5173',
-]
+# Production should set CORS_ALLOWED_ORIGINS to the deployed frontend origin.
+# CORS_ALLOW_ALL can be set true briefly during first deploy if needed.
+CORS_ALLOWED_ORIGINS = _env_list(
+    "CORS_ALLOWED_ORIGINS",
+    "http://localhost:5173",
+)
+CORS_ALLOW_ALL_ORIGINS = _env_flag("CORS_ALLOW_ALL", "False")
 
 ROOT_URLCONF = 'config.urls'
 

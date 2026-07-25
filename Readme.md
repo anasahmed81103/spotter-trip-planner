@@ -177,13 +177,20 @@ There is currently no input for a future departure date or time.
 ## Configuration
 
 Create local `.env` files from the supplied examples. `.env` files are ignored
-by Git.
+by Git. Existing local setups keep working: if these Django vars are omitted,
+the backend defaults to local-friendly values (`DEBUG=True`, localhost hosts,
+Vite CORS origin).
 
 Backend (`backend/.env`):
 
 ```dotenv
 OSRM_BASE_URL=https://router.project-osrm.org
 NOMINATIM_BASE_URL=https://nominatim.openstreetmap.org
+SECRET_KEY=django-insecure-change-me-for-production
+DEBUG=True
+ALLOWED_HOSTS=localhost,127.0.0.1
+CORS_ALLOWED_ORIGINS=http://localhost:5173
+CORS_ALLOW_ALL=False
 ```
 
 Frontend (`frontend/.env`):
@@ -192,8 +199,9 @@ Frontend (`frontend/.env`):
 VITE_API_BASE_URL=http://localhost:8000/api
 ```
 
-`VITE_API_BASE_URL` must include the `/api` prefix and must be configured before
-building the frontend because Vite embeds it in the production bundle.
+`VITE_API_BASE_URL` should include the `/api` prefix (and must be set before a
+production frontend build, because Vite embeds it in the bundle). If the suffix
+is omitted, the client appends `/api` automatically.
 
 ## REST API
 
@@ -293,24 +301,35 @@ traffic.
 ## Deployment overview
 
 The frontend can be deployed as a static Vite site, while the backend requires
-a Python WSGI host.
+a Python WSGI host. The same codebase runs locally with `runserver` / `npm run
+dev` using the defaults in `.env.example`.
 
-A simple deployment split is:
+### Recommended free split
 
-- Frontend: Vercel, Netlify, Cloudflare Pages, or a static Render service.
-- Backend: Render, Railway, Fly.io, or another Django-compatible host.
+1. **Backend on Render** (Web Service)
+   - Root Directory: `backend`
+   - Build Command: `pip install -r requirements.txt && python manage.py migrate --noinput`
+   - Start Command: `gunicorn config.wsgi:application --bind 0.0.0.0:$PORT`
+   - Environment variables:
+     - `SECRET_KEY` = a long random string
+     - `DEBUG` = `False`
+     - `ALLOWED_HOSTS` = `*` for the first deploy, then your `*.onrender.com` host
+     - `CORS_ALLOW_ALL` = `true` for the first deploy, then `false`
+     - `CORS_ALLOWED_ORIGINS` = your Vercel URL once known (e.g. `https://your-app.vercel.app`)
+     - `OSRM_BASE_URL` = `https://router.project-osrm.org`
+     - `NOMINATIM_BASE_URL` = `https://nominatim.openstreetmap.org`
 
-Before a public deployment, production-harden Django instead of using the
-current development settings:
+2. **Frontend on Vercel**
+   - Root Directory: `frontend`
+   - Framework Preset: Vite
+   - Environment variable:
+     - `VITE_API_BASE_URL` = `https://YOUR-BACKEND.onrender.com/api`
+       (the `/api` suffix is required; the client also appends it if omitted)
 
-- load `SECRET_KEY`, `DEBUG`, `ALLOWED_HOSTS`, and allowed CORS origins from
-  environment variables;
-- set `DEBUG=False`;
-- use a production WSGI server such as Gunicorn rather than `runserver`;
-- allow only the deployed frontend origin through CORS;
-- use HTTPS and run Django's deployment checks;
-- point the frontend's `VITE_API_BASE_URL` at the deployed backend `/api` URL.
+3. After both URLs exist, lock Render down:
+   - `ALLOWED_HOSTS` = your Render hostname only
+   - `CORS_ALLOWED_ORIGINS` = your exact Vercel origin
+   - `CORS_ALLOW_ALL` = `false`
 
-No persistent database is required for trip planning. If Django admin,
-authentication, or sessions are not used, their SQLite data is operationally
-irrelevant to this application.
+No persistent application database is required for trip planning. Django's
+SQLite file is only used by built-in admin/auth apps.

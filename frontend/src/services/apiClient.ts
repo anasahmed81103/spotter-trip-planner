@@ -5,7 +5,22 @@
  * (like tripService) only need to describe which endpoint to call.
  */
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000/api";
+/**
+ * Normalize the configured API root so both
+ * `https://host.onrender.com/api` and `https://host.onrender.com` work.
+ * Paths below always start with `/` (e.g. `/plan-trip`).
+ */
+function normalizeApiBaseUrl(rawValue: string): string {
+  const trimmed = rawValue.trim().replace(/\/+$/, "");
+  if (trimmed.length === 0) {
+    return "http://localhost:8000/api";
+  }
+  return /\/api$/i.test(trimmed) ? trimmed : `${trimmed}/api`;
+}
+
+const API_BASE_URL = normalizeApiBaseUrl(
+  import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000/api",
+);
 
 export async function postJson<TResponse>(path: string, body: unknown): Promise<TResponse> {
   let response: Response;
