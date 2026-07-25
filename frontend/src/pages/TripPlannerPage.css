@@ -78,6 +78,22 @@
   color: var(--color-ink-muted);
 }
 
+.trip-planner__credit {
+  position: fixed;
+  right: var(--space-md);
+  bottom: 28px;
+  z-index: var(--z-brand);
+  margin: 0;
+  pointer-events: none;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(139, 151, 168, 0.55);
+  user-select: none;
+}
+
 /* Planning panel */
 .trip-planner__panel {
   position: relative;
@@ -285,6 +301,15 @@
   .trip-planner__panel--docked .trip-planner__panel-inner {
     max-height: none;
     overflow: visible;
+  }
+
+  .trip-planner__credit {
+    left: 50%;
+    right: auto;
+    bottom: max(12px, env(safe-area-inset-bottom, 0px));
+    transform: translateX(-50%);
+    text-align: center;
+    white-space: nowrap;
   }
 }
 

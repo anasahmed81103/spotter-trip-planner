@@ -103,6 +103,8 @@ export function TripPlannerPage() {
           )}
         </div>
       </aside>
+
+      <p className="trip-planner__credit">© Anas Ahmed 2026</p>
     </div>
   );
 }
